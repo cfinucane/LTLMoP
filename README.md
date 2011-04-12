@@ -27,11 +27,11 @@ How can I find out more?
 ------------------------
 
 * For more information, please refer to our Wiki and the following publication:
-http://web.mae.cornell.edu/hadaskg/Publications/KGFP_TRO09.pdf
+[http://web.mae.cornell.edu/hadaskg/Publications/KGFP_TRO09.pdf]
 
-* An installation guide and tutorial is available at https://github.com/LTLMoP/LTLMoP/raw/master/doc/tutorial.pdf
+* An installation guide and tutorial is available at [https://github.com/LTLMoP/LTLMoP/raw/master/doc/tutorial.pdf]
 
-* A demonstration video is available at https://github.com/LTLMoP/LTLMoP/raw/master/doc/ltlmop_iros_final.mp4
+* A demonstration video is available at [https://github.com/LTLMoP/LTLMoP/raw/master/doc/ltlmop_iros_final.mp4]
 
-* The API documentation is available at http://ltlmop.googlecode.com/svn/trunk/doc/_build/html/index.html
+* The API documentation is available at [http://ltlmop.googlecode.com/svn/trunk/doc/_build/html/index.html]
 
