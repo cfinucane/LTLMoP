@@ -9,11 +9,12 @@ The LTLMoP (Linear Temporal Logic MissiOn Planning) toolkit is a collection of P
 Which version should I download?
 --------------------------------
 
-The latest "stable" version of LTLMoP is available on the `master` branch; /note that this may be fairly old/.
+The latest "stable" version of LTLMoP is available on the `master` branch; *note that this may be fairly old*.
+
 The most up-to-date version is available on the `development` branch.  This is more likely to have cool new features, but may contain some bugs.
 
-*(To switch branches:)[Click the "Switch Branches" button near the top of the page.]
-*(To download:)[Click the "Downloads" button at the top-right of the page, and choose either `.tar.gz` or `.zip` format.]
+* __To switch branches:__ Click the "Switch Branches" button near the top of the page.
+* __To download:__ Click the "Downloads" button at the top-right of the page, and choose either `.tar.gz` or `.zip` format.
 
 How can I report a problem?
 ---------------------------
