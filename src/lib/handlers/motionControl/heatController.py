@@ -50,7 +50,7 @@ class motionControlHandler:
         else:
             arrived = False
 
-        if (arrived != (not inside)) and (time.time()-self.last_warning) > 0.5:
+        if not last and (arrived != (not inside)) and (time.time()-self.last_warning) > 0.5:
             print "WARNING: Left current region but not in expected destination region"
             # Figure out what region we think we stumbled into
             for r in self.rfi.regions:
@@ -66,20 +66,26 @@ class motionControlHandler:
         return arrived
 
 
-    def get_controller(self, current, next, last, cache={}):
+    def get_controller(self, current, next, last, cache={}, lastcache={}):
         """
         Wrapper for the controller factory, with caching.
         """
 
         # Check to see if we already have an appropriate controller stored in the cache.
-        # TODO: Account for last in cache
+        # TODO: Actually cache the last controllers
 
-        if current in cache and next in cache[current]:
+        if not last and current in cache and next in cache[current]:
             return cache[current][next]
+
+        if last and current in lastcache: 
+            return lastcache[current]
 
         # If not, create a space in the cache to put our new controller.
 
-        cache[current] = {}
+        if not last:
+            cache[current] = {}
+        else:
+            lastcache[current] = {}
         
         # Let's go get a controller!
 
@@ -117,7 +123,10 @@ class motionControlHandler:
         controller = heatControllerHelper.getController(vertices, transFace, last)
 
         # Cache it in
-        cache[current][next] = controller
+        if not last:
+            cache[current][next] = controller
+        else:
+            lastcache[current] = controller
 
         return controller
 
