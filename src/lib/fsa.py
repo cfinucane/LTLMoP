@@ -68,6 +68,7 @@ class Automaton:
         self.current_state = None
         self.current_region = None
         self.current_outputs = {}
+        self.arrived = False
 
     def stateWithName(self, name):
         """
@@ -412,6 +413,7 @@ class Automaton:
             if self.next_region is not None and (self.next_region != self.current_region):
                 ### We're going to a new region
                 print "Heading to region %s..." % self.regions[self.next_region].name
+                self.arrived = False
                 # In this case, we can't move into the next state until we've physically reached the new region
             else:
                 ### The state changed, but the region didn't
@@ -423,9 +425,10 @@ class Automaton:
 
         # Move one step towards the next region (or stay in the same region)
         # TODO: Use the "last" controllers?
-        arrived = self.motion_handler.gotoRegion(self.current_region, self.next_region)
+        if not self.arrived:
+            self.arrived = self.motion_handler.gotoRegion(self.current_region, self.next_region)
 
-        if arrived:
+        if self.arrived:
             ### The move handler has told us that we have finally reached our destination region
             # TODO: Finish this check to see whether actually inside next region that we expected:
             #    # Check what region we're in.
@@ -435,7 +438,7 @@ class Automaton:
             #            return i
             #    return -1
 
-            if self.next_region is not None:
+            if self.next_region is not self.current_region:
                 print "Crossed border from %s to %s!" % (self.regions[self.current_region].name, self.regions[self.next_region].name)
             self.current_state = self.next_state   
             self.current_region = self.next_region
