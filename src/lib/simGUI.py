@@ -244,9 +244,10 @@ class SimGUI_Frame(wx.Frame):
             [x,y] = map(lambda x: int(self.mapScale*x), self.robotPos) 
             dc.DrawCircle(x, y, 5)
 
-        # Draw velocity vector of robot (for debugging)
-        #dc.DrawLine(self.robotPos[0], self.robotPos[1], 
-        #            self.robotPos[0] + self.robotVel[0], self.robotPos[1] + self.robotVel[1])
+            # Draw velocity vector of robot (for debugging)
+            dc.DrawLine(x, y, \
+                        x + self.robotVel[0], \
+                        y + self.robotVel[1])
 
         dc.EndDrawing()
         
