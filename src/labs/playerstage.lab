@@ -12,7 +12,7 @@ SensorHandler:
 lib.handlers.sensor.dummySensor
 
 ActuatorHandler:
-lib.handlers.actuator.dummyActuator
+lib.handlers.actuator.gotoActuator
 
 LocomotionCommandHandler:
 lib.handlers.locomotionCommand.playerLocomotionCommand

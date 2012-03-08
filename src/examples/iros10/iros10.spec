@@ -9,7 +9,7 @@ Calibration: # Coordinate transformation between map and experiment: XScale, XOf
 0.0145090906457,-7.97493804517,-0.0163607845119,5.97177404282
 
 InitialRegion: # Initial region number
-2
+4
 
 InitialTruths: # List of initially true propositions
 
@@ -46,21 +46,17 @@ pioneer_stage.robot
 ======== SETTINGS ========
 
 Actions: # List of actions and their state (enabled = 1, disabled = 0)
-pick_up,1
-drop,1
-radio,1
-extinguish,0
+gotoPOI,1
+beep,1
 
 Customs: # List of custom propositions
-carrying_item
 
 RegionFile: # Relative path of region description file
 iros10.regions
 
 Sensors: # List of sensors and their state (enabled = 1, disabled = 0)
-fire,0
-person,1
-hazardous_item,1
+gotoPOIDone,1
+detectPOI,1
 
 currentExperimentName:
 PlayerStage
@@ -71,27 +67,24 @@ PlayerStage
 RegionMapping:
 
 living=p4
-porch=p3
 deck=p7
-others=p2,p9,p10
+porch=p3
 dining=p6
 bedroom=p8
+others=
 kitchen=p5
 
 Spec: # Specification in simple English
 # Initial conditions
 Env starts with false
-Robot starts with false
-Robot starts in porch
-#Assumptions about the environment
-If you were in porch then do not hazardous_item
-# Define robot safety including how to pick up
-Do pick_up if and only if you are sensing hazardous_item and you are not activating carrying_item
-If you did not activate carrying_item then always not porch
-# Define when and how to radio
-Do radio if and only if you are sensing person
-If you are activating radio or you were activating radio then stay there
-# Patrol goals
-If you are not activating carrying_item and you are not activating radio then visit dining
+Robot starts in porch with false
 
+group Targets is porch, bedroom
+
+do gotoPOI if and only if you are sensing detectPOI
+if you were activating gotoPOI or you are activating gotoPOI then stay there
+
+if you are not activating gotoPOI then visit all Targets
+
+do beep if and only if you are sensing gotoPOIDone
 
