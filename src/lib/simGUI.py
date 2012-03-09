@@ -16,6 +16,8 @@ import wxversion
 import wx, wx.richtext, wx.grid
 import threading
 import project, mapRenderer
+from regions import *
+import Polygon, Polygon.IO
 from socket import *
 
 # begin wxGlade: extracode
@@ -34,6 +36,7 @@ class SimGUI_Frame(wx.Frame):
         self.button_sim_startPause = wx.Button(self.window_1_pane_2, -1, "Start")
         self.button_sim_log_clear = wx.Button(self.window_1_pane_2, -1, "Clear Log")
         self.button_sim_log_export = wx.Button(self.window_1_pane_2, -1, "Export Log...")
+        self.button_exportTraj = wx.Button(self.window_1_pane_2, -1, "Export Trajectory...")
         self.label_1 = wx.StaticText(self.window_1_pane_2, -1, "Show log messages for:")
         self.checkbox_statusLog_targetRegion = wx.CheckBox(self.window_1_pane_2, -1, "Target region announcements")
         self.checkbox_statusLog_propChange = wx.CheckBox(self.window_1_pane_2, -1, "System proposition changes")
@@ -46,6 +49,7 @@ class SimGUI_Frame(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.onSimStartPause, self.button_sim_startPause)
         self.Bind(wx.EVT_BUTTON, self.onSimClear, self.button_sim_log_clear)
         self.Bind(wx.EVT_BUTTON, self.onSimExport, self.button_sim_log_export)
+        self.Bind(wx.EVT_BUTTON, self.onExportTraj, self.button_exportTraj)
         self.Bind(wx.EVT_SPLITTER_SASH_POS_CHANGED, self.onResize, self.window_1)
         # end wxGlade
         self.window_1_pane_1.SetBackgroundStyle(wx.BG_STYLE_CUSTOM)
@@ -87,6 +91,8 @@ class SimGUI_Frame(wx.Frame):
         self.robotPos = None
         self.robotVel = (0,0)
 
+        self.robotTraj = []
+
         # Let everyone know we're ready
         self.UDPSockTo.sendto("Hello!",self.addrTo)
 
@@ -125,6 +131,7 @@ class SimGUI_Frame(wx.Frame):
             elif input.startswith("POSE:"):
                 [x,y] = map(float, input.split(":")[1].split(","))
                 self.robotPos = (x, y)
+                self.robotTraj.append(self.robotPos)
                 wx.CallAfter(self.onPaint)
             elif input.startswith("VEL:"):
                 [x,y] = map(float, input.split(":")[1].split(","))
@@ -182,6 +189,7 @@ class SimGUI_Frame(wx.Frame):
         sizer_43_copy_1.Add((20, 20), 0, 0, 0)
         sizer_43_copy_1.Add(self.button_sim_log_export, 0, wx.LEFT|wx.RIGHT|wx.EXPAND|wx.ALIGN_CENTER_HORIZONTAL, 20)
         sizer_43_copy_1.Add((20, 20), 0, 0, 0)
+        sizer_43_copy_1.Add(self.button_exportTraj, 0, wx.LEFT|wx.RIGHT|wx.EXPAND, 20)
         sizer_3.Add((20, 40), 0, 0, 0)
         sizer_3.Add(self.label_1, 0, 0, 0)
         sizer_3.Add(self.checkbox_statusLog_targetRegion, 0, wx.TOP|wx.BOTTOM, 5)
@@ -331,6 +339,37 @@ class SimGUI_Frame(wx.Frame):
         self.text_ctrl_sim_log.Clear()
         event.Skip()
 
+
+    def onExportTraj(self, event): # wxGlade: SimGUI_Frame.<event_handler>
+        """
+        Ask the user for a filename to save the Log as, and then save it.
+        """
+        default = 'TrajLog'
+    
+        # Get a filename
+        fileName = wx.FileSelector("Save File As", 
+                                    os.path.join(os.getcwd(),'examples'),
+                                    default_filename=default,
+                                    default_extension="svg",
+                                    wildcard="SVG files (*.svg)|*.svg",
+                                    flags = wx.SAVE | wx.OVERWRITE_PROMPT)
+        if fileName == "": return # User cancelled.
+
+        # Force a .svg extension.  How mean!!!
+        if os.path.splitext(fileName)[1] != ".svg":
+            fileName = fileName + ".svg"
+        
+        # Include boundary just for scale reference
+        points = [(pt.x,pt.y) for pt in self.proj.rfi.regions[self.proj.rfi.indexOfRegionWithName("boundary")].getPoints()]
+        boundPoly = Polygon.Polygon(points)
+
+        # Turn saved robot trajectory into polygon
+        trajPoly = Polygon.Polygon(self.robotTraj)
+
+        # Save data to the file
+        Polygon.IO.writeSVG(fileName, [boundPoly, trajPoly])
+
+        event.Skip()
 
 # end of class SimGUI_Frame
 
