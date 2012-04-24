@@ -15,7 +15,7 @@ import math, time, sys, os, re
 import wxversion
 import wx, wx.richtext, wx.grid
 import threading
-import project, mapRenderer
+import project, mapRenderer, regions
 from socket import *
 
 # begin wxGlade: extracode
@@ -50,6 +50,8 @@ class SimGUI_Frame(wx.Frame):
         # end wxGlade
         self.window_1_pane_1.SetBackgroundStyle(wx.BG_STYLE_CUSTOM)
         self.mapBitmap = None
+        self.plotBitmap = None
+        self.plotBitmapLock = threading.Lock()
 
         self.Bind(wx.EVT_PAINT, self.onPaint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, self.onEraseBG)
@@ -67,7 +69,7 @@ class SimGUI_Frame(wx.Frame):
         print "(GUI) Starting socket for communication to controller"
         self.host = 'localhost'
         self.portTo = 9562
-        self.buf = 1024
+        self.buf = ""
         self.addrTo = (self.host,self.portTo)
         self.UDPSockTo = socket(AF_INET,SOCK_DGRAM)
         
@@ -109,45 +111,86 @@ class SimGUI_Frame(wx.Frame):
         # CONTROLLER LISTEN THREAD #
         ############################
 
-        while 1: 
+        while True: 
             # Wait for and receive a message from the controller
-            input,self.addrFrom = self.UDPSockFrom.recvfrom(self.buf)
-            if input == '':  # EOF indicates that the connection has been destroyed
-                print "Controller listen thread is shutting down."
-                break
+            packet, self.addrFrom = self.UDPSockFrom.recvfrom(1024)
 
-            input = input.strip()
-            #print >>sys.__stdout__, input
+            # Process line-by-line, even if split into multiple packets 
+            chunks = packet.split("\n") 
+            while len(chunks) > 1:
+                msg = self.buf + chunks.pop(0)
+                self.buf = ""
+                self._processCommandMessage(msg.strip())
 
-            # Update stuff (should put these in rough order of frequency for optimal speed
-            if input.startswith("Running at"):
-                wx.CallAfter(self.sb.SetStatusText, input, 0)
-            elif input.startswith("POSE:"):
-                [x,y] = map(float, input.split(":")[1].split(","))
-                self.robotPos = (x, y)
-                wx.CallAfter(self.onPaint)
-            elif input.startswith("VEL:"):
-                [x,y] = map(float, input.split(":")[1].split(","))
-                [x,y] = map(int, (self.mapScale*x, self.mapScale*y)) 
-                self.robotVel = (x, y)
-            elif input.startswith("PAUSE"):
-                # FIXME: Sometimes we'll still get rate updates AFTER a pause
-                wx.CallAfter(self.sb.SetStatusText, input, 0)
-            elif input.startswith("Output proposition"):
-                if self.checkbox_statusLog_propChange.GetValue():
-                    wx.CallAfter(self.appendLog, input + "\n", color="GREEN") 
-            elif input.startswith("Heading to"):
-                if self.checkbox_statusLog_targetRegion.GetValue():
-                    wx.CallAfter(self.appendLog, input + "\n", color="BLUE") 
-            elif input.startswith("Crossed border"):
-                if self.checkbox_statusLog_border.GetValue():
-                    wx.CallAfter(self.appendLog, input + "\n", color="CYAN") 
-            elif input.startswith("BG:"):
-                wx.CallAfter(self.setMapImage, input.split(":",1)[1])
-            else:
-                if self.checkbox_statusLog_other.GetValue():
-                    if input != "":
-                        wx.CallAfter(self.appendLog, input + "\n", color="BLACK") 
+            self.buf += chunks[0]
+
+    def _processCommandMessage(self, msg):
+        # Update stuff (should put these in rough order of frequency for optimal speed
+        if msg.startswith("Running at"):
+            wx.CallAfter(self.sb.SetStatusText, msg, 0)
+        elif (msg.startswith("PLOT_POINTS:") or
+              msg.startswith("PLOT_LINES:") or
+              msg.startswith("PLOT_CLEAR:")):
+
+            plot_cmd, plot_body = msg.split(':',1)
+
+            if plot_cmd in ['PLOT_POINTS', 'PLOT_LINES']:
+                # Parse arguments
+                m = re.match(r'\[(?P<x>.*?)\]\s+\[(?P<y>.*?)\]\s+(?P<c>\w+)', plot_body)
+                if m is None:
+                    print >>sys.__stderr__, "WARNING: Invalid plot command body: %s" % plot_body
+                    return
+
+                x_pts = map(float, re.split('\s*,\s*', m.group('x')))
+                y_pts = map(float, re.split('\s*,\s*', m.group('y')))
+                pts = map(lambda pt: wx.Point(int(self.mapScale*pt[0]), int(self.mapScale*pt[1])), zip(x_pts, y_pts))
+                color = Color()
+                color.SetFromName(m.group('c'))
+                
+            b_dc = wx.MemoryDC()
+            self.plotBitmapLock.acquire()
+            b_dc.SelectObject(self.plotBitmap)
+            b_dc.BeginDrawing()
+
+            if plot_cmd == "PLOT_CLEAR":
+                b_dc.Clear()
+            elif plot_cmd == "PLOT_POINTS":
+                b_dc.SetPen(wx.Pen(color, 5, wx.SOLID))
+                b_dc.DrawPointList(pts)
+            elif plot_cmd == "PLOT_LINES":
+                b_dc.SetPen(wx.Pen(color, 2, wx.SOLID))
+                b_dc.DrawLines(pts)
+
+            b_dc.EndDrawing()
+            self.plotBitmap.SetMaskColour(wx.WHITE) # TODO: not white
+            b_dc.SelectObject(wx.NullBitmap)
+            self.plotBitmapLock.release()
+        elif msg.startswith("POSE:"):
+            [x,y] = map(float, msg.split(":")[1].split(","))
+            self.robotPos = (x, y)
+            wx.CallAfter(self.onPaint)
+        elif msg.startswith("VEL:"):
+            [x,y] = map(float, msg.split(":")[1].split(","))
+            [x,y] = map(int, (self.mapScale*x, self.mapScale*y)) 
+            self.robotVel = (x, y)
+        elif msg.startswith("PAUSE"):
+            # FIXME: Sometimes we'll still get rate updates AFTER a pause
+            wx.CallAfter(self.sb.SetStatusText, msg, 0)
+        elif msg.startswith("Output proposition"):
+            if self.checkbox_statusLog_propChange.GetValue():
+                wx.CallAfter(self.appendLog, msg + "\n", color="GREEN") 
+        elif msg.startswith("Heading to"):
+            if self.checkbox_statusLog_targetRegion.GetValue():
+                wx.CallAfter(self.appendLog, msg + "\n", color="BLUE") 
+        elif msg.startswith("Crossed border"):
+            if self.checkbox_statusLog_border.GetValue():
+                wx.CallAfter(self.appendLog, msg + "\n", color="CYAN") 
+        elif msg.startswith("BG:"):
+            wx.CallAfter(self.setMapImage, msg.split(":",1)[1])
+        else:
+            if self.checkbox_statusLog_other.GetValue():
+                if msg != "":
+                    wx.CallAfter(self.appendLog, msg + "\n", color="BLACK") 
 
     def __set_properties(self):
         # begin wxGlade: SimGUI_Frame.__set_properties
@@ -208,6 +251,9 @@ class SimGUI_Frame(wx.Frame):
         self.mapBitmap = wx.EmptyBitmap(size.x, size.y)
         self.mapScale = mapRenderer.drawMap(self.mapBitmap, self.proj.rfi, scaleToFit=True, drawLabels=False, memory=True)
 
+        # As a side-effect, plot will automatically be cleared when screen is resized
+        self.plotBitmap = wx.EmptyBitmap(size.x, size.y)
+
         self.Refresh()
         self.Update()
 
@@ -238,6 +284,11 @@ class SimGUI_Frame(wx.Frame):
 
         # Draw background
         dc.DrawBitmap(self.mapBitmap, 0, 0)
+
+        # Draw any plotted stuff
+        self.plotBitmapLock.acquire()
+        dc.DrawBitmap(self.plotBitmap, 0, 0, useMask=True)
+        self.plotBitmapLock.release()
 
         # Draw robot
         if self.robotPos is not None:
