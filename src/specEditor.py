@@ -1110,7 +1110,7 @@ class SpecEditorFrame(wx.Frame):
             elif compiler.realizable:
                 self.appendLog("Specification is unsynthesizable for slow and fast actions.\n Automaton successfully synthesized for instantaneous actions.\n", "GREEN")
             else:
-                self.appendLog("ERROR: Specification was unsynthesizable (unrealizable/unsatisfiable) for instantaneous actions.\n", "RED")
+                self.appendLog("ERROR: Specification was unsynthesizable (unrealizable/unsatisfiable).\n", "RED")
         else:
             if compiler.realizable:
                 self.appendLog("Automaton successfully synthesized for instantaneous actions.\n", "GREEN")
@@ -1388,13 +1388,15 @@ class SpecEditorFrame(wx.Frame):
             self.analysisDialog.appendLog(output.rstrip(), "RED")
         self.analysisDialog.appendLog('\n')
                 
-        #highlight guilty sentences
-        #special treatment for goals: we already know which one to highlight                
+        #highlight guilty sub-formulas
         if self.proj.compile_options["parser"] == "structured":
             for h_item in self.to_highlight:
                 tb_key = h_item[0].title() + h_item[1].title()
                 if h_item[1] == "goals":
                     self.text_ctrl_spec.MarkerAdd(self.tracebackTree[tb_key][h_item[2]]-1, MARKER_LIVE)
+                else:                     
+                    for l in self.tracebackTree[tb_key]:
+                        self.highlight(l, h_item[1])
         elif self.proj.compile_options["parser"] == "slurp":
             for frag in self.to_highlight:
                 self.analysisDialog.markFragments(*frag)
@@ -1421,6 +1423,10 @@ class SpecEditorFrame(wx.Frame):
     
         guilty = self.compiler._coreFinding(self.to_highlight, self.unsat, self.badInit)
     
+        #remove existing highlighting except goals (because we already have the exact goal)
+        self.text_ctrl_spec.MarkerDeleteAll(MARKER_INIT)
+        self.text_ctrl_spec.MarkerDeleteAll(MARKER_SAFE)
+        
         self.highlightCores(guilty, self.compiler)
 
         self.appendLog("Final analysis complete.\n", "BLUE")

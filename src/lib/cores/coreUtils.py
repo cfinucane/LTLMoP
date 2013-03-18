@@ -47,7 +47,11 @@ def conjunctsToCNF(conjuncts, propList):
     
     props = {propList[x]:x+1 for x in range(0,len(propList))}
     propsNext = {propListNext[x]:len(propList)+x+1 for x in range(0,len(propListNext))}
+    
+    #print props
+    
     mapping = {conjuncts[x]:[] for x in range(0,len(conjuncts))}
+    cnfMapping = {conjuncts[x]:[] for x in range(0,len(conjuncts))}
     
     cnfClauses = []
     transClauses = []
@@ -58,28 +62,28 @@ def conjunctsToCNF(conjuncts, propList):
     
     allCnfs = runMap(lineToCnf, conjuncts)   
     
-    #associate original LTL conjuncts with CNF clauses
-    cnfMapping = {line:cnf.split("&") for cnf, line in zip(allCnfs,conjuncts) if cnf}  
+          
     for cnf, lineOld in zip(allCnfs,conjuncts):     
-      if cnf: 
+      if cnf != '': 
         allClauses = cnf.split("&");
         for clause in allClauses:    
-            clause = re.sub('[()]', '', clause)   
-            clause = re.sub('[|]', '', clause)           
-            clause = re.sub('~', '-', clause)    
+            clause = cnfToDimacs(clause)
             #replace prop names with var numbers
             for k in propsNext.keys():
                 clause = re.sub("\\b"+k+"\\b",str(propsNext[k]), clause)
             for k in props.keys():
                 clause = re.sub("\\b"+k+"\\b",str(props[k]), clause)   
             #add trailing 0   
+            clause = clause.strip()+" 0\n"
             if "<>" in lineOld:
-                goalClauses.append(clause.strip()+" 0\n")
+                goalClauses.append(clause)
             elif "[]" in lineOld:
-                transClauses.append(clause.strip()+" 0\n")
-                cnfClauses.append(clause.strip()+" 0\n")                                
+                transClauses.append(clause)
+                cnfClauses.append(clause)                                
             else:
-                cnfClauses.append(clause.strip()+" 0\n")         
+                cnfClauses.append(clause)     
+            #associate original LTL conjuncts with CNF clauses
+            cnfMapping[lineOld].append(clause)
             
         if not "<>" in lineOld:
             #for non-goal (i.e. trans and init) formulas, extend mapping with line nos.
@@ -89,6 +93,11 @@ def conjunctsToCNF(conjuncts, propList):
                         
     return mapping, cnfMapping, cnfClauses, transClauses, goalClauses
     
+def cnfToDimacs(clause):
+    clause = re.sub('[()]', '', clause)   
+    clause = re.sub('[|]', '', clause)           
+    clause = re.sub('~', '-', clause) 
+    return clause
 
 def cnfToConjuncts(cnfIndices, mapping, cnfMapping):
     #takes a list of cnf line numbers and returns the corresponding LTL
@@ -107,7 +116,18 @@ def cnfToConjuncts(cnfIndices, mapping, cnfMapping):
             #print k , (set(mapping[k]).intersection(cnfIndices))
     return conjuncts
 
-
+def cleanedConjuncts(conjuncts, cnfMapping):
+    sorted_by_num_clauses = sorted(conjuncts, key=lambda tup: -len(tup[1]))
+    result = []
+    allCnfs = set([c for ltl, cnf in conjuncts for c in cnf])        
+    for ltl, cnf in sorted_by_num_clauses:
+            result.append(ltl)
+            for x in cnf:
+                if x in allCnfs:
+                    allCnfs.remove(x) 
+    return result
+         
+       
 def lineToCnf(line):
         #converts a single LTL formula into CNF form 
         line = stripLTLLine(line)
@@ -125,7 +145,7 @@ def lineToCnf(line):
             cnf = str(to_cnf(line))            
             return cnf
         else:
-            return None        
+            return line        
         
         
     
@@ -136,10 +156,14 @@ def stripLTLLine(line, useNext=False):
         line = re.sub('\[\]','',line)  
         line = line.strip()
         #trailing &
-        line = re.sub('&\s*$','',line)   
+        line = re.sub('&\s*$','',line)           
         if useNext:
             line = re.sub('s\.','next_s.',line)
-            line = re.sub('e\.','next_e.',line)                     
+            line = re.sub('e\.','next_e.',line)               
+        line = re.sub('s\.','',line)
+        line = re.sub('e\.','',line)   
+        line = re.sub(r'(next\(\s*!)', r'(!next_', line)         
+        line = re.sub(r'(next\()', r'(next_', line)                         
         return line
         
 def subprocessReadThread(fd, out):
@@ -159,7 +183,7 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
         
         mapping = deepcopy(mapping)
         #precompute p and n
-        p = (depth+2)*(numProps)
+        p = (depth+2)*(numProps) + 1000
         #the +2 is because init contains one trans already 
         #(so effectively there are depth+1 time steps and one final "next" time step)        
         
@@ -202,6 +226,7 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
                             newClause= newClause + str(cmp(intC,0)*(abs(intC)+numProps*i)) +" "                            
                         newClause=newClause+"\n"                                                         
                         #send this clause
+                        #print newClause
                         subp.stdin.write(newClause)
                         input.append(newClause)
                         
@@ -214,7 +239,7 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
                     #transClauses.extend(transClausesNew)  
                     
         #create goal clauses
-        dg = map(lambda x: ' '.join(map(lambda y: str(cmp(int(y),0)*(abs(int(y))+numProps*(depth))), x.split())) + '\n', goals)        
+        dg = map(lambda x: ' '.join(map(lambda y: str(cmp(int(y),0)*(abs(int(y))+numProps*(depth))), x.split())) + '\n', goals)  
         #send goalClauses
         subp.stdin.writelines(dg)
         input.extend(dg)
@@ -278,20 +303,22 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
                     if index!=0:
                         cnfIndices.append(index)
             """
+        ignoreBound = 0
         #pythonified the above
         #get indices of contributing clauses
         cnfIndices = filter(lambda y: y!=0, map((lambda x: int(x.strip('v').strip())), filter(lambda z: re.match('^v', z), output)))
         
-        #get corresponding LTL conjuncts
+       
+        #get contributing conjuncts from CNF indices           
         guilty = cnfToConjuncts([idx for idx in cnfIndices if idx > ignoreBound], mapping, cnfMapping)
-            
+        
         return guilty
     
  
 def unsatCoreCasesWrapper(x): 
     return unsatCoreCases(*x) 
     
-def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions):
+def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions, extra=[]):
      #returns the minimal unsatisfiable core (LTL formulas) given
      #        cmd: picosat command
      #        propList: list of proposition names used
@@ -306,11 +333,18 @@ def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions
         #far as needed to physically get to the goal
         depth = numRegions
         
+        #if len(extra) > 0:
+        #    maxDepth = len(extra)   
+        
+        extra = [x for e in extra for x in e]            
+        
         #first try without topo and init, see if it is satisfiable
         ignoreDepth = 0    
         mapping, cnfMapping, init, trans, goals = conjunctsToCNF([badInit]+conjuncts, propList)
         
         logging.info("Trying to find core without topo or init") 
+
+        init.extend(extra)
 
         guiltyList = runMap(findGuiltyLTLConjunctsWrapper, itertools.izip(itertools.repeat(cmd),
                                                                           range(1, maxDepth + 1),
@@ -326,8 +360,8 @@ def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions
         #allGuilty = map((lambda (depth, cnfs): self.guiltyParallel(depth+1, cnfs, mapping)), list(enumerate(allCnfs)))
             
         allGuilty = set([item for sublist in guiltyList for item in sublist])
-            
-        if all(guiltyList):
+    
+        if all((map(lambda x: x !=[], guiltyList))):
             logging.info("Unsat core found without topo or init")
             return trans, allGuilty
         else:
@@ -339,19 +373,20 @@ def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions
         #then try just topo and init and see if it is unsatisfiable. If so, return core.
         logging.info("Trying to find core with just topo and init") 
         mapping,  cnfMapping, init, trans, goals = conjunctsToCNF([topo, badInit], propList)
-       
+        init.extend(extra)
                     
         guilty = findGuiltyLTLConjuncts(cmd,maxDepth,numProps,init,trans,goals,mapping,cnfMapping,[topo, badInit],0)
         
                 #allGuilty = map((lambda (depth, cnfs): self.guiltyParallel(depth+1, cnfs, mapping)), list(enumerate(allCnfs)))
             #print "ENDING PICO MAP"
- 
+        
         if guilty:
             logging.info("Unsat core found with just topo and init")
             return trans, guilty
         
         #if the problem is in conjunction with the topo but not just topo, keep increasing the depth until something more than just topo is returned
         mapping,  cnfMapping, init, trans, goals = conjunctsToCNF([topo,badInit] + conjuncts, propList)
+        init.extend(extra)
         
         logging.info("Trying to find core with everything")
         
@@ -372,11 +407,18 @@ def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions
         guilty = [item for sublist in guiltyList for item in sublist]        
         
         guiltyMinusGoal = [g for g in guilty if '<>' not in g]
+        
+#        print "guiltyMinusGoal", guiltyMinusGoal
+#        print "topo, badInit", [topo, badInit]
+#        print "intersect", set(guiltyMinusGoal).intersection(set([topo, badInit]))
+#        print "superset", set([topo, badInit]).issuperset(guiltyMinusGoal)
+      
 
         # don't use ignoreDepth for deadlock
         if len(goals) == 0:
            ignoreDepth = 0 
-                        
+        
+           
         justTopo = set([topo, badInit]).issuperset(guiltyMinusGoal)
         depth = maxDepth + 1
         
@@ -410,9 +452,9 @@ def stateToLTL(state, useEnv=1, useSys=1, use_next=False):
        
         sys_state = " & ".join([decorate_prop("s."+p, v) for p,v in state.inputs.iteritems()])
         env_state = " & ".join([decorate_prop("e."+p, v) for p,v in state.outputs.iteritems()])
-                
+        
         if useEnv:
-            if useSys:
+            if useSys and env_state!='':
                 return env_state + " & " + sys_state
             else:
                 return env_state
@@ -420,6 +462,59 @@ def stateToLTL(state, useEnv=1, useSys=1, use_next=False):
             return sys_state
         else:
             return ""
+        
+        
+
+def stateCycleToCNFs(cycle, propList, depth): 
+    #expanding the cycle out to the required depth
+    
+    depth = max(depth, len(cycle)) 
+    
+    propListNext = map(lambda s: 'next_'+s, propList)
+    
+    props = {propList[x]:x+1 for x in range(0,len(propList))}
+    propsNext = {propListNext[x]:len(propList)+x+1 for x in range(0,len(propListNext))}
+    
+    def replaceProps(cnfs, depth):
+        newCnfs = []
+        allClauses = cnfs.split("&");      
+        for clause in allClauses:
+            #replace prop names with var numbers
+            for k in propsNext.keys():
+                clause = re.sub("\\b"+k+"\\b",str(propsNext[k]+depth*len(propList)), clause)
+            for k in props.keys():
+                clause = re.sub("\\b"+k+"\\b",str(props[k]+depth*len(propList)), clause)   
+            #add trailing 0   
+            clause = clause.strip()+" 0\n"
+            newCnfs.append(clause)
+        return newCnfs
+    
+    singleTime = [stripLTLLine(stateToLTL(s,1,0)) for s in cycle]
+    singleTimeCnfs = [cnfToDimacs(lineToCnf(s)) for s in singleTime]
+    print singleTimeCnfs
+    
+    unrollTime = []
+    d = 0
+    while d < depth:
+      tempD = d
+      for index, line in enumerate(singleTimeCnfs, d):
+        unrollTime.append(replaceProps(line, index))
+        tempD = tempD + 1
+        if tempD == depth:
+            break
+      d = tempD
+    
+    #unrollTime.append(replaceProps(singleTimeCnfs[0], len(singleTimeCnfs)))
+    return unrollTime
+        
+             
+             
+    
+    
+    
+    
+    
+        
             
         
         
