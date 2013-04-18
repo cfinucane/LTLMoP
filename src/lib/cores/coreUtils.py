@@ -188,6 +188,7 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
         #(so effectively there are depth+1 time steps and one final "next" time step)        
         
         n = (depth)*(len(trans)) + len(init) + len(goals)
+        
         if ignoreDepth == 0:
             ignoreBound = 0
         else:
@@ -312,6 +313,7 @@ def findGuiltyLTLConjuncts(cmd, depth, numProps, init, trans, goals, mapping,  c
         #get contributing conjuncts from CNF indices           
         guilty = cnfToConjuncts([idx for idx in cnfIndices if idx > ignoreBound], mapping, cnfMapping)
         
+        
         return guilty
     
  
@@ -334,7 +336,8 @@ def unsatCoreCases(cmd, propList, topo, badInit, conjuncts, maxDepth, numRegions
         depth = numRegions
         
         #if len(extra) > 0:
-        #    maxDepth = len(extra)   
+        #    maxDepth = len(extra)          
+        
         
         extra = [x for e in extra for x in e]            
         
