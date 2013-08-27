@@ -8,6 +8,25 @@ import re
 # Allocate global parser
 p = LTLParser.Parser()
 
+# TODO: Rename this module to avoid "LTLFormula.LTLFormula"
+
+#############################
+### Convenience functions ###
+#############################
+
+def distributeNexts(ltl_string):
+    """ Takes an LTL formula string and distributes any next() operators
+        so it only operates on bare propositions """
+
+    f = LTLFormula.fromString(ltl_string)
+    f.distributeNexts()
+
+    return str(f)
+
+#########################
+### Class definitions ###
+#########################
+
 class LTLFormulaType:
     """ For marking types of LTL subformulas.  `OTHER` generally means mixed. """
     INITIAL, SAFETY, LIVENESS, OTHER = range(4)
@@ -44,6 +63,29 @@ class LTLFormula(object):
         ltl_guarantees = m.group("guarantees")
 
         return cls.fromString(ltl_assumptions), cls.fromString(ltl_guarantees)
+
+    def distributeNexts(self):
+        """ Distribute any nexts in the formula so that the next() operator
+            only operates on bare propositions """
+
+        self.tree = self._distributeNextsRecurse(self.tree)
+
+    def _distributeNextsRecurse(self, tree, inside_next=False):
+        """ Recursively process a LTLFormula tree to distribute any next operators
+            to the bare propositions beneath them """
+
+        if tree[0] == "Assignment":  # These are the leaves of the tree
+            if inside_next:
+                # Apply next() to any bare proposition assignments
+                return ["UnaryFormula", ["NextOperator", ("next",)], tree]
+            else:
+                return tree
+        else:
+            if tree[0] == "UnaryFormula" and tree[1][0] == "NextOperator":
+                inside_next = True  # set the next flag to true
+                return self._distributeNextsRecurse(tree[2], inside_next)
+            else:
+                return [tree[0]] + [self._distributeNextsRecurse(subtree, inside_next) for subtree in tree[1:]]
 
     def printTree(self, tree=None, terminals=None, indent=0):
         """Print a parse tree to stdout."""
@@ -269,6 +311,13 @@ if __name__ == "__main__":
     print guarantees.getConjunctsByType(LTLFormulaType.LIVENESS)
 
     print guarantees
+
+    ### Test distributeNexts ###
+    test_ltl = "x | next(!abc & (def | ghi & ((!jkl))))"
+    print test_ltl
+    f = LTLFormula.fromString(test_ltl)
+    f.distributeNexts()
+    print f
 
     #x = assumptions.getConjuncts()
     #x.append(LTLFormula.fromString("[]<>whatever"))
