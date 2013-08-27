@@ -57,63 +57,8 @@ def createSMVfile(fileName, sensorList, robotPropList):
     # close the file
     smvFile.close()
     
-
-def createTopologyFragment(adjData, regions, use_bits=True):
-    if use_bits:
-        numBits = int(math.ceil(math.log(len(adjData),2)))
-        # TODO: only calc bitencoding once
-        bitEncode = parseEnglishToLTL.bitEncoding(len(adjData), numBits)
-        currBitEnc = bitEncode['current']
-        nextBitEnc = bitEncode['next']
-
-    # The topological relation (adjacency)
-    adjFormulas = []
-
-    for Origin in range(len(adjData)):
-        # from region i we can stay in region i
-        adjFormula = '\t\t\t []( ('
-        adjFormula = adjFormula + (currBitEnc[Origin] if use_bits else "s."+regions[Origin].name)
-        adjFormula = adjFormula + ') -> ( ('
-        adjFormula = adjFormula + (nextBitEnc[Origin] if use_bits else "next(s."+regions[Origin].name+")")
-        adjFormula = adjFormula + ')'
-        
-        for dest in range(len(adjData)):
-            if adjData[Origin][dest]:
-                # not empty, hence there is a transition
-                adjFormula = adjFormula + '\n\t\t\t\t\t\t\t\t\t| ('
-                adjFormula = adjFormula + (nextBitEnc[dest] if use_bits else "next(s."+regions[dest].name+")")
-                adjFormula = adjFormula + ') '
-
-        # closing this region
-        adjFormula = adjFormula + ' ) ) '
-
-        adjFormulas.append(adjFormula)
-
-    return " & \n".join(adjFormulas)
-
-def createInitialRegionFragment(regions, use_bits=True):
-    # Setting the system initial formula to allow only valid
-    #  region (encoding). This may be redundant if an initial region is
-    #  specified, but it is here to ensure the system cannot start from
-    #  an invalid, or empty region (encoding).
-    if use_bits:
-        numBits = int(math.ceil(math.log(len(regions),2)))
-        # TODO: only calc bitencoding once
-        bitEncode = parseEnglishToLTL.bitEncoding(len(regions), numBits)
-        currBitEnc = bitEncode['current']
-        nextBitEnc = bitEncode['next']
-
-        initreg_formula = '\t\t\t( ' + currBitEnc[0] + ' \n'
-        for regionInd in range(1,len(currBitEnc)):
-            initreg_formula = initreg_formula + '\t\t\t\t | ' + currBitEnc[regionInd] + '\n'
-        initreg_formula = initreg_formula + '\t\t\t) \n'
-    else:
-        initreg_formula = "\n\t({})".format(" | ".join(["({})".format(" & ".join(["s."+r2.name if r is r2 else "!s."+r2.name for r2 in regions])) for r in regions]))
-        
-    return initreg_formula
-
 def createNecessaryFillerSpec(spec_part):
-    """ Both assumptions guarantees need to have at least one each of
+    """ Both assumptions and guarantees need to have at least one each of
         initial, safety, and liveness.  If any are not present,
         create trivial TRUE ones. """
 
