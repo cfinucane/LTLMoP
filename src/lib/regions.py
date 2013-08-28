@@ -215,6 +215,9 @@ class RegionFileInterface(object):
     def getMaximumHeight(self):
 	    return max(r.height for r in self.regions)
 
+    def getRegionNames(self):
+        return [r.name for r in self.regions]
+
     def splitSubfaces(self, obj1, obj2):
         """
         If we have a face of region obj1 that overlaps with the face of another region obj2,
