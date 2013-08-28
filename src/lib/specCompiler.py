@@ -1,4 +1,5 @@
-import os, sys
+import os
+import sys
 import re
 import time
 import math
@@ -6,6 +7,7 @@ import subprocess
 import numpy
 import glob
 import StringIO
+import globalConfig
 import logging
 
 from multiprocessing import Pool
@@ -25,63 +27,37 @@ _SLURP_SPEC_GENERATOR = None
 
 class SpecCompiler(object):
     def __init__(self, spec_filename=None):
+        # Allocate a blank project object
         self.proj = project.Project()
 
+        # If we've been passed a spec_filename, go ahead and load it now
         if spec_filename is not None:
-            self.loadSpec(spec_filename)
+            self.loadProjectFromFile(spec_filename)
 
-    def loadSpec(self,spec_filename):
-        """
-        Load the project object
-        """
+    def loadProjectFromFile(self, spec_filename):
+        """ Load an existing project from a .spec file """
+
         self.proj.loadProject(spec_filename)
 
-        # Check to make sure this project is complete
+        try:
+            self._checkIfProjectIsComplete()
+        except ValueError as e:
+            logging.warning(e)
+
+    def _checkIfProjectIsComplete(self):
+        """ Make sure the currently-loaded project contains the bare minimums that we
+            need to successfully compile.
+
+            There is no return value; will raise a ValueError if there are any problems."""
+
+        # Check for a map
         if self.proj.rfi is None:
-            logging.warning("Please define regions before compiling.")
-            return
-    
-        # Remove comments
-        self.specText = re.sub(r"#.*$", "", self.proj.specText, flags=re.MULTILINE)
+            raise ValueError("Please define regions before compiling.")
 
-        if self.specText.strip() == "":
-            logging.warning("Please write a specification before compiling.")
-            return
-
-    def loadSimpleSpec(self,text="", regionList=[], sensors=[], actuators=[], customs=[], adj=[], outputfile=""):
-        """
-        Load a simple spec given by the arguments without reading from a spec file
-        
-        For Slurp
-
-        region, sensors, actuators, customs are lists of strings representing props
-        adj is a list of tuples [(region1,region2),...]
-        """
-
-        if outputfile == "":
-            logging.error("Need to specify output filename")
-            return
-
-        self.proj.compile_options['decompose'] = False
-        self.proj.project_root = os.path.abspath(os.path.dirname(os.path.expanduser(outputfile)))
-        self.proj.project_basename, ext = os.path.splitext(os.path.basename(outputfile))
-        self.proj.specText=text
-        # construct a list of region objects with given names
-        self.proj.rfi = regions.RegionFileInterface()
-        for rname in regionList:
-            self.proj.rfi.regions.append(regions.Region(name=rname))
-
-        self.proj.enabled_sensors = sensors
-        self.proj.enabled_actuators = actuators
-        self.proj.all_customs = customs
-
-        # construct adjacency matrix
-        self.proj.rfi.transitions= [[[] for j in range(len(self.proj.rfi.regions))] for i in range(len(self.proj.rfi.regions))]
-        for tran in adj:
-            idx0 = self.proj.rfi.indexOfRegionWithName(tran[0])
-            idx1 = self.proj.rfi.indexOfRegionWithName(tran[1])
-            self.proj.rfi.transitions[idx0][idx1] = [(0,0)] # fake trans face
-            self.proj.rfi.transitions[idx1][idx0] = [(0,0)]
+        # Make sure the specification is not effectively empty
+        spec_text_minus_comments = re.sub(r"#.*$", "", self.proj.specText, flags=re.MULTILINE)
+        if spec_text_minus_comments.strip() == "":
+            raise ValueError("Please write a specification before compiling.")
 
     def _decompose(self):
         self.parser = parseLP.parseLP()
@@ -455,31 +431,6 @@ class SpecCompiler(object):
 
         return spec
         
-    def _checkForEmptyGaits(self):
-        from simulator.ode.ckbot import CKBotLib
-
-        # Initialize gait library
-        self.library = CKBotLib.CKBotLib()
-
-        err = 0
-        libs = self.library
-        libs.readLibe()
-		# Check that each individual trait has a corresponding config-gait pair
-        robotPropList = self.proj.enabled_actuators + self.proj.all_customs
-        for act in robotPropList:
-            act = act.strip("u's.")
-            if act[0] == "T":
-                act = act.strip("T_")
-                #print act
-                words = act.split("_and_")
-                #print words
-                config = libs.findGait(words)
-                #print config
-                if type(config) == type(None):
-                    err_message = "No config-gait pair for actuator T_" + act + "\n"
-                    logging.warning(err_message)
-                    err = 1
-
     def _getGROneCommand(self, module):
         # Check that GROneMain, etc. is compiled
         if not os.path.exists(os.path.join(self.proj.ltlmop_root,"etc","jtlv","GROne","GROneMain.class")):
@@ -858,3 +809,7 @@ class SpecCompiler(object):
 
         return self._synthesize(with_safety_aut)
 
+
+if __name__ == "__main__":
+    # TODO: testing code
+    print "test"
