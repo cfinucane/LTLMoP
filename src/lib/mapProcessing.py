@@ -48,7 +48,7 @@ def getRegionNameMappingFromMap(spec_map):
         for root_name in child_region.mapProcessingParentRegionNames:
             region_name_mapping[root_name].append(child_region.name)
 
-    return region_name_mapping
+    return dict(region_name_mapping)
 
 def substituteLocativePhrases(spec_text, spec_map):
     """ Detect any non-projective prepositional phrases (e.g. "between r1
