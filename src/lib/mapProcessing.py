@@ -151,23 +151,23 @@ if __name__ == "__main__":
         print "Wrote intermediate map to {}.".format(out_filename)
 
     print "Spec:", test_spec
-    exportIntermediateMap("original")
+    exportIntermediateMap("0_original")
 
     test_spec, test_map = substituteLocativePhrases(test_spec, test_map)
     print "Spec:", test_spec
-    exportIntermediateMap("locative_phrases")
+    exportIntermediateMap("1_locative_phrases")
 
     test_map = createRegionsFromFreeSpace(test_map)
-    exportIntermediateMap("free_space")
+    exportIntermediateMap("2_free_space")
 
     test_map = removeObstacles(test_map)
-    exportIntermediateMap("obstacles")
+    exportIntermediateMap("3_obstacles")
 
     test_map = resolveOverlappingRegions(test_map)
-    exportIntermediateMap("overlapping")
+    exportIntermediateMap("4_overlapping")
 
     test_map = decomposeRegionsIntoConvexRegions(test_map)
-    exportIntermediateMap("convexify")
+    exportIntermediateMap("5_convexify")
 
     adj = calculateTopologicalAdjacencies(test_map)
     print "Adjacencies:", adj
