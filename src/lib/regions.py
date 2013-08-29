@@ -343,10 +343,7 @@ class RegionFileInterface(object):
         """ Write the map out to a SVG file.
 
             If no filename is specified, use the name of the `.regions` file
-            but replace extension with `.svg`.
-
-            Note: Due to coordinate system differences, the map will
-            appear to be flipped over the X-axis. """
+            but replace extension with `.svg`. """
 
         if filename is None:
             if self.filename is None:
@@ -356,7 +353,7 @@ class RegionFileInterface(object):
         poly_list = []
 
         for region in self.regions:
-            points = [(pt.x, pt.y) for pt in region.getPoints()]
+            points = [(pt.x, -pt.y) for pt in region.getPoints()]
             poly = Polygon.Polygon(points)
             poly_list.append(poly)
 
