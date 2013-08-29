@@ -21,6 +21,7 @@ import re, random, math
 import Polygon, Polygon.Utils, os
 import json
 from numbers import Number
+import logging
 
 Polygon.setTolerance(0.01)
 
@@ -168,12 +169,16 @@ class RegionFileInterface(object):
             # Find an available name
             region.name = 'r' + str(self.getNextAvailableRegionNumber())
 
+    def getRegionByName(self, name):
+        return self.regions[self.indexOfRegionWithName(name)]
+
     def indexOfRegionWithName(self, name):
-        for i, region in enumerate(self.regions):
-            if region.name.lower() == name.lower():
-                return i
-        print 'WARNING: Region "' + name + '" not found.'
-        return -1
+        try: 
+            return next((i for i, r in enumerate(self.regions)
+                         if r.name.lower() == name.lower()))
+        except StopIteration:
+            logging.warning('Region "' + name + '" not found.')
+            return -1
 
     def getCalibrationPoints(self):
         for region in self.regions:
