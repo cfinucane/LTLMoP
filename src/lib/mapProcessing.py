@@ -63,6 +63,28 @@ def substituteLocativePhrases(spec_text, spec_map):
 
     return new_spec_text, new_spec_map
 
+def createRegionsFromFreeSpace(spec_map):
+    """ If there is any space enclosed by the boundary that is not associated
+        with a defined region, create one or more new regions to make the map
+        into a true partitioning of the workspace. """
+
+    # TODO: add this step to wiki docs
+    with _trackRegionParents(spec_map):
+        logging.debug("Creating regions from free space...")
+        new_spec_map = spec_map
+
+    return new_spec_map
+
+def removeObstacles(spec_map):
+    """ Subtract any obstacle regions from the map. """
+
+    # TODO: add this step to wiki docs
+    with _trackRegionParents(spec_map):
+        logging.debug("Removing obstacles...")
+        new_spec_map = spec_map
+
+    return new_spec_map
+
 def resolveOverlappingRegions(spec_map):
     """ Splits up any overlapping regions.
         For example: consider a map of only "r1" and "r2", which partially
@@ -127,6 +149,12 @@ if __name__ == "__main__":
 
     test_spec, test_map = substituteLocativePhrases(test_spec, test_map)
     print "Spec:", test_spec
+    print "Regions:", test_map.getRegionNames()
+
+    test_map = createRegionsFromFreeSpace(test_map)
+    print "Regions:", test_map.getRegionNames()
+
+    test_map = removeObstacles(test_map)
     print "Regions:", test_map.getRegionNames()
 
     test_map = resolveOverlappingRegions(test_map)
