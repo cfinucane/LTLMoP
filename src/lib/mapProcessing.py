@@ -42,7 +42,7 @@ def decomposeRegionsIntoConvexRegions(spec_map):
 
 def calculateTopologicalAdjacencies(spec_map):
     """ For each region, determine which other regions can be reached from
-        it directly. Currently, this assumes topological adjacency if and 
+        it directly. Currently, this assumes topological adjacency if and
         only if two regions have at least one face (or subface) in common. """
 
     logging.debug("Calculating topological adjacencies...")
@@ -59,22 +59,20 @@ if __name__ == "__main__":
     from regions import RegionFileInterface, Region, Point
 
     # Create a test map with two squares sitting slightly apart
-    # (in both x and y), and a third smaller square contained 
+    # (in both x and y), and a third smaller square contained
     # entirely in the first
 
     test_map = RegionFileInterface()
-    test_map.regions.append(Region(name="r1", points=[Point(10, 0),
-                                                      Point(20, 0),
-                                                      Point(20, 0),
-                                                      Point(10, 0)]))
-    test_map.regions.append(Region(name="r2", points=[Point(50, 0),
-                                                      Point(60, 0),
-                                                      Point(60, 0),
-                                                      Point(50, 0)]))
-    test_map.regions.append(Region(name="r3", points=[Point(12, 2),
-                                                      Point(18, 2),
-                                                      Point(18, 8),
-                                                      Point(12, 8)]))
+
+    def rectangle(x, y, w, h):
+        return [Point(x, y), Point(x+w, y), Point(x+w, y+h), Point(x, y+h)]
+
+    test_map.regions.append(Region(name="r1", points=rectangle(10, 10, 10, 10)))
+    test_map.regions.append(Region(name="r2", points=rectangle(50, 20, 10, 10)))
+    test_map.regions.append(Region(name="r3", points=rectangle(12, 12, 6, 6)))
+    test_map.regions.append(Region(name="obstacle", points=rectangle(45, 15, 10, 10)))
+    test_map.getRegionByName("obstacle").isObstacle = True
+    test_map.regions.append(Region(name="boundary", points=rectangle(10, 10, 50, 20)))
 
     # Create a test spec that contains a locative phrase
     test_spec = """group places is r2, r3, between r1 and r2
