@@ -18,7 +18,7 @@
 import os, sys, copy
 import fileMethods
 import re, random, math
-import Polygon, Polygon.Utils, os
+import Polygon, Polygon.Utils, Polygon.IO
 import json
 from numbers import Number
 import logging
@@ -338,6 +338,29 @@ class RegionFileInterface(object):
         allFaces = [face for obj in self.regions for face in obj.getFaces(includeHole=True)]
         internalFaces = self.recalcAdjacency()
         return list(set(allFaces) - set(internalFaces))
+
+    def exportToSVG(self, filename=None):
+        """ Write the map out to a SVG file.
+
+            If no filename is specified, use the name of the `.regions` file
+            but replace extension with `.svg`.
+
+            Note: Due to coordinate system differences, the map will
+            appear to be flipped over the X-axis. """
+
+        if filename is None:
+            if self.filename is None:
+                raise ValueError("Output filename must be specified.")
+            filename = re.sub(r"\.regions$", ".svg", self.filename)
+
+        poly_list = []
+
+        for region in self.regions:
+            points = [(pt.x, pt.y) for pt in region.getPoints()]
+            poly = Polygon.Polygon(points)
+            poly_list.append(poly)
+
+        Polygon.IO.writeSVG(filename, poly_list)
 
     def writeFile(self, filename):
         """
