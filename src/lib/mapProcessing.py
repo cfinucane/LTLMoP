@@ -132,36 +132,42 @@ if __name__ == "__main__":
     def rectangle(x, y, w, h):
         return [Point(x, y), Point(x+w, y), Point(x+w, y+h), Point(x, y+h)]
 
+    test_map.regions.append(Region(name="boundary", points=rectangle(10, 10, 50, 20)))
     test_map.regions.append(Region(name="r1", points=rectangle(10, 10, 10, 10)))
     test_map.regions.append(Region(name="r2", points=rectangle(50, 20, 10, 10)))
     test_map.regions.append(Region(name="r3", points=rectangle(12, 12, 6, 6)))
     test_map.regions.append(Region(name="obstacle", points=rectangle(45, 15, 10, 10)))
     test_map.getRegionByName("obstacle").isObstacle = True
-    test_map.regions.append(Region(name="boundary", points=rectangle(10, 10, 50, 20)))
 
     # Create a test spec that contains a locative phrase
     test_spec = """group places is r2, r3, between r1 and r2
                    visit all places"""
 
     # Run some tests
+    def exportIntermediateMap(test_name):
+        print "Regions:", test_map.getRegionNames()
+        out_filename = "mapProcessingTestResult_" + test_name + ".svg"
+        test_map.exportToSVG(out_filename)
+        print "Wrote intermediate map to {}.".format(out_filename)
+
     print "Spec:", test_spec
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("original")
 
     test_spec, test_map = substituteLocativePhrases(test_spec, test_map)
     print "Spec:", test_spec
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("locative_phrases")
 
     test_map = createRegionsFromFreeSpace(test_map)
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("free_space")
 
     test_map = removeObstacles(test_map)
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("obstacles")
 
     test_map = resolveOverlappingRegions(test_map)
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("overlapping")
 
     test_map = decomposeRegionsIntoConvexRegions(test_map)
-    print "Regions:", test_map.getRegionNames()
+    exportIntermediateMap("convexify")
 
     adj = calculateTopologicalAdjacencies(test_map)
     print "Adjacencies:", adj
