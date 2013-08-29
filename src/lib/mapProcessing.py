@@ -5,10 +5,50 @@ the maps to be used for specification compilation.
 """
 
 import globalConfig
+from contextlib import contextmanager
+from collections import defaultdict
 import logging
 
-# TODO: Change the way we handle "region mapping"; it should
-#       probably be embedded inside the map itself
+@contextmanager
+def _trackRegionParents(spec_map):
+    """ We need to keep track of the name that a person would use to refer
+        to each region when writing a specification (i.e., the name of the
+        original region that this region came from as opposed to an internal
+        name generated during map processing) """
+
+    # BEFORE PROCESSING: ensure that the region parents are marked
+    for r in spec_map.regions:
+        # If no parents are defined yet, assume that this is the
+        # first time we are processing the map, and therefore we
+        # should treat the current name as the root name
+        if not hasattr(r, "mapProcessingParentRegionNames"):
+            r.mapProcessingParentRegionNames = [r.name]
+
+    # Let the processing proceed
+    yield spec_map
+
+    # AFTER PROCESSING: if one-to-one mappings exist, rename the regions
+    # back to their root name, to maximize legibility
+    for root_name, children_names in getRegionNameMappingFromMap(spec_map).iteritems():
+        # Check if root has exactly one child
+        if len(children_names) != 1:
+            continue
+
+        child_region = spec_map.getRegionByName(children_names[0])
+        if len(child_region.mapProcessingParentRegionNames) == 1:   # Child has only one root
+            child_region.name = root_name  # Rename
+
+def getRegionNameMappingFromMap(spec_map):
+    """ Returns a dictionary mapping names of root regions (i.e. region names
+        as originally defined by the user) to a list of the names of corresponding
+        child regions created during map processing. """
+
+    region_name_mapping = defaultdict(list)
+    for child_region in spec_map.regions:
+        for root_name in child_region.mapProcessingParentRegionNames:
+            region_name_mapping[root_name].append(child_region.name)
+
+    return region_name_mapping
 
 def substituteLocativePhrases(spec_text, spec_map):
     """ Detect any non-projective prepositional phrases (e.g. "between r1
@@ -16,9 +56,10 @@ def substituteLocativePhrases(spec_text, spec_map):
         corresponds to this location, and substitute the phrase with a
         reference to the name of the new region (e.g. "_between_r1_and_r2"). """
 
-    logging.debug("Substituting locative phrases...")
-    new_spec_text = spec_text
-    new_spec_map = spec_map
+    with _trackRegionParents(spec_map):
+        logging.debug("Substituting locative phrases...")
+        new_spec_text = spec_text
+        new_spec_map = spec_map
 
     return new_spec_text, new_spec_map
 
@@ -27,16 +68,18 @@ def resolveOverlappingRegions(spec_map):
         For example: consider a map of only "r1" and "r2", which partially
         overlap. These regions would be replaced by [r1\r2, r1&r2, r2\r1]. """
 
-    logging.debug("Resolving overlapping regions...")
-    new_spec_map = spec_map
+    with _trackRegionParents(spec_map):
+        logging.debug("Resolving overlapping regions...")
+        new_spec_map = spec_map
 
     return new_spec_map
 
 def decomposeRegionsIntoConvexRegions(spec_map):
     """ Break up any concave regions into convex subregions. """
 
-    logging.debug("Decomposing into convex regions...")
-    new_spec_map = spec_map
+    with _trackRegionParents(spec_map):
+        logging.debug("Decomposing into convex regions...")
+        new_spec_map = spec_map
 
     return new_spec_map
 
@@ -94,6 +137,7 @@ if __name__ == "__main__":
 
     adj = calculateTopologicalAdjacencies(test_map)
     print "Adjacencies:", adj
+    
+    print "Mapping:", getRegionNameMappingFromMap(test_map)
 
-    # TODO: mapping
     # TODO: add assertions so this test can be evaluated automatically?
