@@ -353,8 +353,8 @@ class RegionFileInterface(object):
         poly_list = []
 
         for region in self.regions:
-            points = [(pt.x, -pt.y) for pt in region.getPoints()]
-            poly = Polygon.Polygon(points)
+            poly = region.getAsPolygon()
+            # TODO: flip over x-axis
             poly_list.append(poly)
 
         Polygon.IO.writeSVG(filename, poly_list)
@@ -501,6 +501,24 @@ class Region(object):
         NOTE: All coordinates are stored internally with (0,0) at the top left.
               X increases to right, and Y increases downwards.
     """
+
+    @classmethod
+    def fromPolygon(cls, name, polygon):
+        """ Create from a Polygon object """
+
+        r = cls(name=name)
+
+        for i, contour in enumerate(polygon):
+            if polygon.isHole(i):
+                r.holeList.append([Point(*x) for x in Polygon.Utils.pointList(Polygon.Polygon(contour))])
+            else:
+                r.pointArray = [Point(*x) for x in Polygon.Utils.pointList(Polygon.Polygon(contour))]
+
+        # Ensure that the point ordering is CW
+        if r.getDirection() == dir_CCW:
+            r.pointArray.reverse()
+
+        return r
 
     def __init__(self, type=reg_POLY, position=Point(0, 0), size=Size(0, 0),
                  height=0, color=None, points=None, name=''):
@@ -766,6 +784,20 @@ class Region(object):
                     yield frozenset((lastPt, firstPt)) # Closing face
                 else:
                     print "WARNING: region {} has hole side of length 0".format(self.name)
+
+    def getAsPolygon(self):
+        """ Return the points of this polygon as a Polygon object. """
+        # TODO: Just use Polygon objects everywhere...
+        outside_points = [(pt.x, pt.y) for pt in self.getPoints()]
+
+        poly = Polygon.Polygon(outside_points)
+
+        # We need to include any hole contours as well
+        for hole_id in range(len(self.holeList)):
+            hole_points = [(pt.x, pt.y) for pt in self.getPoints(hole_id=hole_id)]
+            poly -= Polygon.Polygon(hole_points)
+
+        return poly
 
     def getPoints(self, relative=False, hole_id=None):
         """
