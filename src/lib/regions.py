@@ -187,14 +187,14 @@ class RegionFileInterface(object):
                     pts = [x for x in region.getPoints()]
                     yield([region.name, index, pts[index].x, pts[index].y])
 
-    def getNextAvailableRegionNumber(self):
+    def getNextAvailableRegionNumber(self, prefix="r"):
         """
-        Look for the smallest region name of form r1, r2, ... available.
+        Look for the smallest region name of form prefix1, prefix2, ... available.
         """
 
         # First get all region names of the form we're interested in
         nums = []
-        p = re.compile(r"^r(?P<num>\d+)$")
+        p = re.compile(r"^"+prefix+r"(?P<num>\d+)$")
         
         for region in self.regions:
             m = p.match(region.name)
