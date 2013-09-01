@@ -5,9 +5,17 @@ the maps to be used for specification compilation.
 """
 
 import globalConfig
+import logging
+
 from contextlib import contextmanager
 from collections import defaultdict
-import logging
+import itertools
+
+from decomposition import removeDuplicatePoints
+import Polygon
+import regions
+
+# TODO: move some stuff to polygonUtils
 
 @contextmanager
 def _trackRegionParents(spec_map):
@@ -71,9 +79,21 @@ def createRegionsFromFreeSpace(spec_map):
     # TODO: add this step to wiki docs
     with _trackRegionParents(spec_map):
         logging.debug("Creating regions from free space...")
-        new_spec_map = spec_map
 
-    return new_spec_map
+        # Start with the boundary region
+        boundary_region = spec_map.getRegionByName("boundary")
+        free_space_poly = boundary_region.getAsPolygon()
+
+        # Subtract all the other regions
+        for r in spec_map.regions:
+            if r is not boundary_region:
+                free_space_poly -= r.getAsPolygon()
+
+        spec_map.regions.remove(spec_map.getRegionByName("boundary"))
+        spec_map.regions.extend((_createNewRegionWithParentFromPoly(spec_map, poly, ["free_space"]) \
+                                 for poly in _splitMultiContourPolygon(free_space_poly)))
+
+    return spec_map
 
 def removeObstacles(spec_map):
     """ Subtract any obstacle regions from the map. """
@@ -81,9 +101,101 @@ def removeObstacles(spec_map):
     # TODO: add this step to wiki docs
     with _trackRegionParents(spec_map):
         logging.debug("Removing obstacles...")
-        new_spec_map = spec_map
 
-    return new_spec_map
+        # Get all the obstacle polygons
+        obstacle_list = (r.getAsPolygon() for r in spec_map.regions if r.isObstacle)
+
+        # Join all obstacles together to make it easier to subtract
+        all_obstacles_poly = reduce(lambda p1, p2: p1+p2, obstacle_list, Polygon.Polygon())
+
+        # Save the old regions that are not obstacles
+        original_nonobstacle_regions = [r for r in spec_map.regions if not r.isObstacle]
+
+        # Start building a new map afresh
+        spec_map.regions = []
+
+        for r in original_nonobstacle_regions:
+            # Subtract the obstacles from the old regions to make one or more new ones
+            new_polygons = _splitMultiContourPolygon(r.getAsPolygon() - all_obstacles_poly)
+            spec_map.regions.extend((_createNewRegionWithParentFromPoly(spec_map, new_poly, r) \
+                                     for new_poly in new_polygons))
+
+    return spec_map
+
+def _createNewRegionWithParentFromPoly(spec_map, poly, parent):
+    """ Creates a new region from a polygon `poly`, giving it the lowest "pXXX" name available
+        amongst existing regions in `spec_map`.
+
+        If `parent` is a Region object, sets the parents of the new region to inherit those of
+        the `parent` region.  Otherwise, sets the parents directly to the value of `parent`. """
+
+    new_region_name = "p{}".format(spec_map.getNextAvailableRegionNumber(prefix="p"))
+    new_region = regions.Region.fromPolygon(new_region_name, poly)
+
+    if isinstance(parent, regions.Region):
+        new_region.mapProcessingParentRegionNames = parent.mapProcessingParentRegionNames
+    else:
+        new_region.mapProcessingParentRegionNames = parent
+
+    return new_region
+
+def _splitMultiContourPolygon(poly):
+    """ Take a multi-contour polygon and return a list of single-contour
+        polygons. """
+
+    # Get a list of any holes in the polygon
+    hole_list = (contour for k, contour in enumerate(poly) if poly.isHole(k))
+
+    # Join all holes together to make it easier to subtract
+    all_holes_poly = reduce(lambda p1, p2: p1+p2, hole_list, Polygon.Polygon())
+
+    # Make each contour into a separate poly
+    poly_list = [Polygon.Polygon(contour) - all_holes_poly \
+                 for k, contour in enumerate(poly) \
+                 if not poly.isHole(k)]
+
+    # Split up any polygons with overlapping points
+    poly_list = itertools.chain.from_iterable((_splitPolygonWithOverlappingPoints(poly) \
+                     for poly in poly_list))
+
+    return list(poly_list)
+
+def _splitPolygonWithOverlappingPoints(polygon):
+    """
+    When there are points overlapping each other in a given polygon
+    First decompose this polygon into sub-polygons at the overlapping point
+    """
+
+    # TODO: refactor this function
+    # TODO: don't ignore holes
+
+    # - recursively break the polygon at any overlap point into two polygons
+    # until no overlap points are found
+    # - here we are sure there is only one contour in the given polygon
+
+    ptDic = {}
+    overlapPtIndex = None
+    # look for overlap point and stop when one is found
+    for i, pt in enumerate(polygon[0]):
+        if pt not in ptDic:
+            ptDic[pt] = [i]
+        else:
+            ptDic[pt].append(i)
+            overlapPtIndex = ptDic[pt]
+            break
+
+    if overlapPtIndex:
+        polyWithoutOverlapNode = []
+        # break the polygon into sub-polygons
+        newPoly = Polygon.Polygon(polygon[0][overlapPtIndex[0]:overlapPtIndex[1]])
+        polyWithoutOverlapNode.extend(_splitPolygonWithOverlappingPoints(newPoly))
+        reducedPoly = Polygon.Polygon(removeDuplicatePoints((polygon-newPoly)[0]))
+        polyWithoutOverlapNode.extend(_splitPolygonWithOverlappingPoints(reducedPoly))
+    else:
+        # no overlap point is found
+        return [polygon]
+
+    return polyWithoutOverlapNode
 
 def resolveOverlappingRegions(spec_map):
     """ Splits up any overlapping regions.
@@ -125,7 +237,7 @@ if __name__ == "__main__":
 
     # Create a test map with two squares sitting slightly apart
     # (in both x and y), and a third smaller square contained
-    # entirely in the first
+    # entirely in the first... plus some obstacles and other stuff
 
     test_map = RegionFileInterface()
 
@@ -136,8 +248,11 @@ if __name__ == "__main__":
     test_map.regions.append(Region(name="r1", points=rectangle(10, 10, 10, 10)))
     test_map.regions.append(Region(name="r2", points=rectangle(50, 20, 10, 10)))
     test_map.regions.append(Region(name="r3", points=rectangle(12, 12, 6, 6)))
-    test_map.regions.append(Region(name="obstacle", points=rectangle(45, 15, 10, 10)))
-    test_map.getRegionByName("obstacle").isObstacle = True
+    test_map.regions.append(Region(name="r4", points=rectangle(20, 20, 30, 10)))
+    test_map.regions.append(Region(name="obstacle1", points=rectangle(45, 15, 10, 10)))
+    test_map.getRegionByName("obstacle1").isObstacle = True
+    test_map.regions.append(Region(name="obstacle2", points=rectangle(30, 0, 5, 50)))
+    test_map.getRegionByName("obstacle2").isObstacle = True
 
     # Create a test spec that contains a locative phrase
     test_spec = """group places is r2, r3, between r1 and r2
