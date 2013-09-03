@@ -931,10 +931,10 @@ class Region(object):
 
     def findPointsNear(self, face, center, distance):
         # find slope of the face line
-        x1=face[0][0]
-        y1=face[0][1]
-        x2=face[1][0]
-        y2=face[1][1]
+        pt1, pt2 = face
+        x1, y1 = pt1
+        x2, y2 = pt2
+
         if x1 == x2: # vertical line
             if center[0]>x1:
                 x1_new=x1-distance
