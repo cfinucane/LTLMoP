@@ -427,7 +427,7 @@ class decomposition():
 
             thisPt = Point(pt.x, pt.y)
 
-            if lastPt != None:
+            if lastPt is not None:
                 yield tuple(sorted((lastPt, thisPt)))
             else:
                 firstPt = thisPt
