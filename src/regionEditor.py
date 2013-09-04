@@ -301,7 +301,7 @@ class DrawingFrame(wx.Frame):
         self.backgroundImage = None
         self.fileName  = fileName
         
-        self.transitionFaces = {}          # The keys are faces that are shared by more than one region
+        self.transitionFaces = []          # The keys are faces that are shared by more than one region
 
         self.dirty     = False
         self.needsAdjacencyRecalc = True
@@ -929,7 +929,7 @@ class DrawingFrame(wx.Frame):
             if drawAdjacencies:
                 # Highlight adjacent faces
                 dc.SetPen(wx.Pen(wx.Colour(255,0,0,100), 5, wx.DOT))
-                for face in self.transitionFaces.keys():
+                for face in self.transitionFaces:
                     p1 = list(face)[0]
                     p2 = list(face)[1]
                     dc.DrawLine(p1[0], p1[1], p2[0], p2[1])

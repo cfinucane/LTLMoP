@@ -10,50 +10,77 @@ import logging
 from contextlib import contextmanager
 from collections import defaultdict
 import itertools
+import copy
 
-from decomposition import removeDuplicatePoints
-import Polygon
 import regions
-
-# TODO: move some stuff to polygonUtils
+import polygonUtils
+import decomposition
+import parseLP
+import Polygon
 
 @contextmanager
-def _trackRegionParents(spec_map):
+def _trackRegionRoots(spec_map):
     """ We need to keep track of the name that a person would use to refer
-        to each region when writing a specification (i.e., the name of the
-        original region that this region came from as opposed to an internal
-        name generated during map processing) """
+        to each region when writing a specification (i.e., the name(s) of the
+        original "root" region(s) that a region came from as opposed to the
+        internal names generated during map processing).
 
-    # BEFORE PROCESSING: ensure that the region parents are marked
-    for r in spec_map.regions:
-        # If no parents are defined yet, assume that this is the
-        # first time we are processing the map, and therefore we
-        # should treat the current name as the root name
-        if not hasattr(r, "mapProcessingParentRegionNames"):
-            r.mapProcessingParentRegionNames = [r.name]
+        In order to ensure proper accounting, map processing operations
+        should generally take place inside this context manager. """
 
-    # Let the processing proceed
+    ### BEFORE PROCESSING: ###
+
+    # Ensure that the region roots are marked
+    _ensureRegionRootsAreMarked(spec_map)
+
+    ### Let the processing proceed ###
     yield spec_map
 
-    # AFTER PROCESSING: if one-to-one mappings exist, rename the regions
-    # back to their root name, to maximize legibility
+    ### AFTER PROCESSING: ###
+
+    # Ensure that the region roots are marked, again
+    # (since new regions may have been added)
+    _ensureRegionRootsAreMarked(spec_map)
+
+    # Rename subregions in order, starting with "p1"
+    # (It's much easier to do this here, than to try to be careful
+    # about this during each map processing operation)
+    for k, region in enumerate(spec_map.regions):
+        region.name = "p{}".format(k+1)
+
+    # If one-to-one mappings exist, rename the regions back to their root name,
+    # in order to maximize legibility
     for root_name, children_names in getRegionNameMappingFromMap(spec_map).iteritems():
         # Check if root has exactly one child
         if len(children_names) != 1:
             continue
 
         child_region = spec_map.getRegionByName(children_names[0])
-        if len(child_region.mapProcessingParentRegionNames) == 1:   # Child has only one root
+        if len(child_region.mapProcessingRootRegionNames) == 1:   # Child has only one root
             child_region.name = root_name  # Rename
+
+def _ensureRegionRootsAreMarked(spec_map):
+    """ Ensure that all regions in `spec_map` have roots marked.
+
+        If any are unmarked, assume that this is the first time we are
+        processing the map, and therefore we should treat the current name
+        as the root name. """
+
+    for r in spec_map.regions:
+        if not hasattr(r, "mapProcessingRootRegionNames"):
+            r.mapProcessingRootRegionNames = [r.name]
 
 def getRegionNameMappingFromMap(spec_map):
     """ Returns a dictionary mapping names of root regions (i.e. region names
         as originally defined by the user) to a list of the names of corresponding
         child regions created during map processing. """
 
+    # Just in case the map hasn't been previously processed
+    _ensureRegionRootsAreMarked(spec_map)
+
     region_name_mapping = defaultdict(list)
     for child_region in spec_map.regions:
-        for root_name in child_region.mapProcessingParentRegionNames:
+        for root_name in child_region.mapProcessingRootRegionNames:
             region_name_mapping[root_name].append(child_region.name)
 
     return dict(region_name_mapping)
@@ -64,20 +91,23 @@ def substituteLocativePhrases(spec_text, spec_map):
         corresponds to this location, and substitute the phrase with a
         reference to the name of the new region (e.g. "_between_r1_and_r2"). """
 
-    with _trackRegionParents(spec_map):
+    with _trackRegionRoots(spec_map):
         logging.debug("Substituting locative phrases...")
-        new_spec_text = spec_text
-        new_spec_map = spec_map
+        spec_text, spec_map = parseLP.processLocativePhrases(spec_text, spec_map)
 
-    return new_spec_text, new_spec_map
+    return spec_text, spec_map
 
 def createRegionsFromFreeSpace(spec_map):
     """ If there is any space enclosed by the boundary that is not associated
         with a defined region, create one or more new regions to make the map
         into a true partitioning of the workspace. """
-
     # TODO: add this step to wiki docs
-    with _trackRegionParents(spec_map):
+
+    # This operation is meaningless without a boundary region
+    if spec_map.indexOfRegionWithName("boundary") < 0:
+        raise ValueError("Cannot create free-space region with no boundary defined")
+
+    with _trackRegionRoots(spec_map):
         logging.debug("Creating regions from free space...")
 
         # Start with the boundary region
@@ -89,17 +119,43 @@ def createRegionsFromFreeSpace(spec_map):
             if r is not boundary_region:
                 free_space_poly -= r.getAsPolygon()
 
-        spec_map.regions.remove(spec_map.getRegionByName("boundary"))
-        spec_map.regions.extend((_createNewRegionWithParentFromPoly(spec_map, poly, ["free_space"]) \
-                                 for poly in _splitMultiContourPolygon(free_space_poly)))
+        # Remove the boundary
+        spec_map.regions.remove(boundary_region)
+
+        # Add in the new free-space regions
+        spec_map.regions.extend(_createNewRegionsWithParentFromPoly(free_space_poly, ["free_space"]))
+
+    return spec_map
+
+def clipRegionsToBoundary(spec_map):
+    """ Remove any parts of regions that are sticking outside of the boundary. """
+    # TODO: add this step to wiki docs
+
+    # This operation is meaningless without a boundary region
+    if spec_map.indexOfRegionWithName("boundary") < 0:
+        raise ValueError("Cannot clip regions to boundary with no boundary defined")
+
+    with _trackRegionRoots(spec_map):
+        logging.debug("Clipping regions to boundary...")
+
+        boundary_region_poly = spec_map.getRegionByName("boundary").getAsPolygon()
+
+        # Intersect all regions with the boundary
+        new_regions = []
+        for r in spec_map.regions:
+            r_poly = r.getAsPolygon()
+            new_region_poly = boundary_region_poly & r_poly
+            new_regions.extend(_createNewRegionsWithParentFromPoly(new_region_poly, [r]))
+
+        spec_map.regions = new_regions
 
     return spec_map
 
 def removeObstacles(spec_map):
     """ Subtract any obstacle regions from the map. """
-
     # TODO: add this step to wiki docs
-    with _trackRegionParents(spec_map):
+
+    with _trackRegionRoots(spec_map):
         logging.debug("Removing obstacles...")
 
         # Get all the obstacle polygons
@@ -116,106 +172,121 @@ def removeObstacles(spec_map):
 
         for r in original_nonobstacle_regions:
             # Subtract the obstacles from the old regions to make one or more new ones
-            new_polygons = _splitMultiContourPolygon(r.getAsPolygon() - all_obstacles_poly)
-            spec_map.regions.extend((_createNewRegionWithParentFromPoly(spec_map, new_poly, r) \
-                                     for new_poly in new_polygons))
+            new_polygon = r.getAsPolygon() - all_obstacles_poly
+            spec_map.regions.extend(_createNewRegionsWithParentFromPoly(new_polygon, [r]))
 
     return spec_map
 
-def _createNewRegionWithParentFromPoly(spec_map, poly, parent):
-    """ Creates a new region from a polygon `poly`, giving it the lowest "pXXX" name available
-        amongst existing regions in `spec_map`.
+def _createNewRegionsWithParentFromPoly(poly, parents):
+    """ Creates one or more new regions from a polygon `poly`.
 
-        If `parent` is a Region object, sets the parents of the new region to inherit those of
-        the `parent` region.  Otherwise, sets the parents directly to the value of `parent`. """
+        `parent` is a list of Region objects and/or names, of which this new
+        region should be considered a subregion. For Region objects, the new
+        region will inherit their roots; names, on the other hand, will be added
+        to the root list directly. """
 
-    new_region_name = "p{}".format(spec_map.getNextAvailableRegionNumber(prefix="p"))
-    new_region = regions.Region.fromPolygon(new_region_name, poly)
-
-    if isinstance(parent, regions.Region):
-        new_region.mapProcessingParentRegionNames = parent.mapProcessingParentRegionNames
-    else:
-        new_region.mapProcessingParentRegionNames = parent
-
-    return new_region
-
-def _splitMultiContourPolygon(poly):
-    """ Take a multi-contour polygon and return a list of single-contour
-        polygons. """
-
-    # Get a list of any holes in the polygon
-    hole_list = (contour for k, contour in enumerate(poly) if poly.isHole(k))
-
-    # Join all holes together to make it easier to subtract
-    all_holes_poly = reduce(lambda p1, p2: p1+p2, hole_list, Polygon.Polygon())
-
-    # Make each contour into a separate poly
-    poly_list = [Polygon.Polygon(contour) - all_holes_poly \
-                 for k, contour in enumerate(poly) \
-                 if not poly.isHole(k)]
-
-    # Split up any polygons with overlapping points
-    poly_list = itertools.chain.from_iterable((_splitPolygonWithOverlappingPoints(poly) \
-                     for poly in poly_list))
-
-    return list(poly_list)
-
-def _splitPolygonWithOverlappingPoints(polygon):
-    """
-    When there are points overlapping each other in a given polygon
-    First decompose this polygon into sub-polygons at the overlapping point
-    """
-
-    # TODO: refactor this function
-    # TODO: don't ignore holes
-
-    # - recursively break the polygon at any overlap point into two polygons
-    # until no overlap points are found
-    # - here we are sure there is only one contour in the given polygon
-
-    ptDic = {}
-    overlapPtIndex = None
-    # look for overlap point and stop when one is found
-    for i, pt in enumerate(polygon[0]):
-        if pt not in ptDic:
-            ptDic[pt] = [i]
+    # Calculate the list of roots that the new region(s) should have
+    new_region_roots = []
+    for parent in parents:
+        if isinstance(parent, regions.Region):
+            new_region_roots.extend(parent.mapProcessingRootRegionNames)
         else:
-            ptDic[pt].append(i)
-            overlapPtIndex = ptDic[pt]
-            break
+            new_region_roots.append(parent)
 
-    if overlapPtIndex:
-        polyWithoutOverlapNode = []
-        # break the polygon into sub-polygons
-        newPoly = Polygon.Polygon(polygon[0][overlapPtIndex[0]:overlapPtIndex[1]])
-        polyWithoutOverlapNode.extend(_splitPolygonWithOverlappingPoints(newPoly))
-        reducedPoly = Polygon.Polygon(removeDuplicatePoints((polygon-newPoly)[0]))
-        polyWithoutOverlapNode.extend(_splitPolygonWithOverlappingPoints(reducedPoly))
-    else:
-        # no overlap point is found
-        return [polygon]
+    # Create a new region for each non-self-overlapping contour in the polygon
+    new_regions = []
+    for p in polygonUtils.splitMultiContourPolygon(poly):
+        # We can name all the regions the same thing, as they will be renamed
+        # by the _trackRegionRoots() context-manager later
+        new_region = regions.Region.fromPolygon("map_processing_temp_region", p)
 
-    return polyWithoutOverlapNode
+        # If any parent is an obstacle, we probably are too...
+        new_region.isObstacle = any((isinstance(parent, regions.Region) and \
+                                     parent.isObstacle for parent in parents))
+
+        # Use copy.copy() here to make sure different lists are used
+        new_region.mapProcessingRootRegionNames = copy.copy(new_region_roots)
+
+        new_regions.append(new_region)
+
+    return new_regions
+
 
 def resolveOverlappingRegions(spec_map):
     """ Splits up any overlapping regions.
         For example: consider a map of only "r1" and "r2", which partially
         overlap. These regions would be replaced by [r1\r2, r1&r2, r2\r1]. """
 
-    with _trackRegionParents(spec_map):
+    with _trackRegionRoots(spec_map):
         logging.debug("Resolving overlapping regions...")
-        new_spec_map = spec_map
 
-    return new_spec_map
+        # We won't be able to modify our list in-place
+        original_regions = copy.copy(spec_map.regions)
+
+        # Start building a new map afresh
+        spec_map.regions = [spec_map.regions[0]]
+        occupied_space = spec_map.regions[0].getAsPolygon()
+
+        # TODO: Attempt to document this algorithm (Jim?)
+        for r in original_regions[1:]:
+            spec_map.regions = polygonUtils.flattenToList((_getIntersectionAndDifferenceRegions(r2, r) \
+                                                           for r2 in spec_map.regions))
+
+            non_overlapping_part = r.getAsPolygon() - occupied_space
+            if non_overlapping_part.nPoints() != 0:
+                spec_map.regions.extend(_createNewRegionsWithParentFromPoly(non_overlapping_part, [r]))
+                occupied_space += r.getAsPolygon()
+
+    return spec_map
+
+def _getIntersectionAndDifferenceRegions(r1, r2):
+    """ Returns regions corresponding to (r1 & r2) and (r1 - r2),
+        if they are non-empty.
+
+        Used in splitting up overlapping regions. """
+
+    # TODO: redo with Regions using Polygons as internal data structure
+
+    r1_poly = r1.getAsPolygon()
+    r2_poly = r2.getAsPolygon()
+
+    # Perform set operations
+    intersection = r1_poly & r2_poly
+    r1_minus_r2 = r1_poly - r2_poly
+
+    # Create new regions from any non-empty results, with proper parentage
+    new_regions = []
+    if intersection.nPoints() != 0:
+        new_regions.extend(_createNewRegionsWithParentFromPoly(intersection, [r1, r2]))
+    if r1_minus_r2.nPoints() != 0:
+        new_regions.extend(_createNewRegionsWithParentFromPoly(r1_minus_r2, [r1]))
+
+    return new_regions
 
 def decomposeRegionsIntoConvexRegions(spec_map):
     """ Break up any concave regions into convex subregions. """
 
-    with _trackRegionParents(spec_map):
+    with _trackRegionRoots(spec_map):
         logging.debug("Decomposing into convex regions...")
-        new_spec_map = spec_map
 
-    return new_spec_map
+        new_regions = []
+        for r in spec_map.regions:
+            poly = r.getAsPolygon()
+
+            # Separate region into outer polygon and hole polygons
+            # TODO: Make decomposition.py do this
+            hole_list = [Polygon.Polygon(contour) for k, contour in enumerate(poly) \
+                         if poly.isHole(k)]
+            poly = Polygon.Utils.fillHoles(poly)
+
+            # Call the MP5 algorithm
+            decomposer = decomposition.decomposition(poly, hole_list)
+            for new_poly in decomposer.MP5():
+                new_regions.extend(_createNewRegionsWithParentFromPoly(new_poly, [r]))
+
+        spec_map.regions = new_regions
+
+    return spec_map
 
 def calculateTopologicalAdjacencies(spec_map):
     """ For each region, determine which other regions can be reached from
@@ -223,9 +294,44 @@ def calculateTopologicalAdjacencies(spec_map):
         only if two regions have at least one face (or subface) in common. """
 
     logging.debug("Calculating topological adjacencies...")
-    adjacency_list = []
+
+    # Construct a list of pairs of names of connected regions
+    adjacency_list = [(r1.name, r2.name) for \
+                      r1, r2 in _findRegionsWithSharedFaces(spec_map)]
+
+    # Make all transitions bidirectional
+    adjacency_list.extend([(y, x) for x, y in adjacency_list])
 
     return adjacency_list
+
+def _findRegionsWithSharedFaces(spec_map):
+    """ Return a list of pairs of regions with shared faces. """
+
+    adjacency_list = []
+
+    for r1, r2 in itertools.combinations(spec_map.regions, 2):
+        # Ignore overlap in identical regions
+        if r1.getAsPolygon() == r2.getAsPolygon():
+            continue
+
+        # If r1 and r2 have any shared faces, assume a connection
+        if len(_getFacesSharedByRegions(r1, r2)) > 0:
+            adjacency_list.append((r1, r2))
+
+    return adjacency_list
+
+def _getFacesSharedByRegions(r1, r2):
+    """ Return a list of faces that regions `r1` and `r2` have in common. """
+
+    # Construct sets of each region's faces
+    r1_faces = set((f for f in r1.getFaces(includeHole=True)))
+    r2_faces = set((f for f in r2.getFaces(includeHole=True)))
+
+    # Find shared faces by simple set intersection
+    shared_faces = list(r1_faces & r2_faces)
+
+    return shared_faces
+
 
 
 ######################
@@ -244,18 +350,18 @@ if __name__ == "__main__":
     def rectangle(x, y, w, h):
         return [Point(x, y), Point(x+w, y), Point(x+w, y+h), Point(x, y+h)]
 
-    test_map.regions.append(Region(name="boundary", points=rectangle(10, 10, 50, 20)))
-    test_map.regions.append(Region(name="r1", points=rectangle(10, 10, 10, 10)))
-    test_map.regions.append(Region(name="r2", points=rectangle(50, 20, 10, 10)))
-    test_map.regions.append(Region(name="r3", points=rectangle(12, 12, 6, 6)))
-    test_map.regions.append(Region(name="r4", points=rectangle(20, 20, 30, 10)))
-    test_map.regions.append(Region(name="obstacle1", points=rectangle(45, 15, 10, 10)))
+    test_map.regions.append(Region(name="boundary", points=rectangle(100, 100, 500, 200)))
+    test_map.regions.append(Region(name="r1", points=rectangle(100, 100, 100, 100)))
+    test_map.regions.append(Region(name="r2", points=rectangle(500, 200, 100, 100)))
+    test_map.regions.append(Region(name="r3", points=rectangle(120, 120, 60, 60)))
+    test_map.regions.append(Region(name="r4", points=rectangle(200, 200, 300, 100)))
+    test_map.regions.append(Region(name="obstacle1", points=rectangle(450, 150, 100, 100)))
     test_map.getRegionByName("obstacle1").isObstacle = True
-    test_map.regions.append(Region(name="obstacle2", points=rectangle(30, 0, 5, 50)))
+    test_map.regions.append(Region(name="obstacle2", points=rectangle(300, 0, 50, 500)))
     test_map.getRegionByName("obstacle2").isObstacle = True
 
     # Create a test spec that contains a locative phrase
-    test_spec = """group places is r2, r3, between r1 and r2
+    test_spec = """group places is within 30 of r2, r3, between r1 and r2
                    visit all places"""
 
     # Run some tests
@@ -272,21 +378,30 @@ if __name__ == "__main__":
     print "Spec:", test_spec
     exportIntermediateMap("1_locative_phrases")
 
+    test_map = clipRegionsToBoundary(test_map)
+    exportIntermediateMap("2_clip")
+
     test_map = createRegionsFromFreeSpace(test_map)
-    exportIntermediateMap("2_free_space")
+    exportIntermediateMap("3_free_space")
 
     test_map = removeObstacles(test_map)
-    exportIntermediateMap("3_obstacles")
+    exportIntermediateMap("4_obstacles")
 
     test_map = resolveOverlappingRegions(test_map)
-    exportIntermediateMap("4_overlapping")
+    exportIntermediateMap("5_overlapping")
 
     test_map = decomposeRegionsIntoConvexRegions(test_map)
-    exportIntermediateMap("5_convexify")
+    exportIntermediateMap("6_convexify")
 
     adj = calculateTopologicalAdjacencies(test_map)
     print "Adjacencies:", adj
-    
+
     print "Mapping:", getRegionNameMappingFromMap(test_map)
+
+    # Export .regions file for further inspection
+    #test_map.recalcAdjacency()
+    #for r in test_map.regions:
+        #r.recalcBoundingBox()
+    #test_map.writeFile("mapProcessingTest.regions")
 
     # TODO: add assertions so this test can be evaluated automatically?

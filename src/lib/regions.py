@@ -21,6 +21,7 @@ import re, random, math
 import Polygon, Polygon.Utils, Polygon.IO
 import json
 from numbers import Number
+import mapProcessing
 import logging
 
 Polygon.setTolerance(0.01)
@@ -277,41 +278,22 @@ class RegionFileInterface(object):
         """
 
         # Create empty adjacency matrix
-        self.transitions = [[[] for j in range(len(self.regions))] for i in range(len(self.regions))]
+        num_regions = len(self.regions)
+        self.transitions = [[[] for j in range(num_regions)] \
+                                for i in range(num_regions)]
 
-        transitionFaces = {} # This is just a list of faces to draw dotted lines on
+        transitionFaces = [] # This is just a list of faces to draw dotted lines on
+        
+        for r1, r2 in mapProcessing._findRegionsWithSharedFaces(self):
+            shared_faces = mapProcessing._getFacesSharedByRegions(r1, r2)
 
-        for obj in self.regions:
-            for face in obj.getFaces(includeHole=True):                
-                if face not in transitionFaces: transitionFaces[face] = []
-                ignore = False
-                for other_obj in transitionFaces[face]:
-                    # Prevent detection of adjoining faces when Duplicate 
-                    # command creates object on top of itself
-                    if other_obj.position == obj.position and \
-                       [x for x in other_obj.getPoints()] == [x for x in obj.getPoints()]:
-                        ignore = True
-    
-                if not ignore:
-                    transitionFaces[face].append(obj)
+            # TODO: stop using region indices everywhere
+            r1_index = self.regions.index(r1)
+            r2_index = self.regions.index(r2)
+            self.transitions[r1_index][r2_index].extend(shared_faces)
+            self.transitions[r2_index][r1_index].extend(shared_faces)
 
-        toDelete = []
-        for face, objarray in transitionFaces.iteritems():
-            if len(objarray) > 1:
-                # If this face is shared by multiple regions
-                for obj in objarray:
-                    key = self.regions.index(obj)
-                    for other_obj in objarray:
-                        if other_obj == obj: continue
-                        key2 = self.regions.index(other_obj)
-                        self.transitions[key][key2].append(face)
-            else:
-                # Otherwise mark for deletion (we can't delete it in the middle of iteration)
-                toDelete.append(face)
-
-        # Delete all those dudes
-        for unused_face in toDelete:
-            del transitionFaces[unused_face]                    
+            transitionFaces.extend(shared_faces)
 
         return transitionFaces
 
