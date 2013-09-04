@@ -2,7 +2,7 @@
 
 import math
 import Polygon, Polygon.IO, Polygon.Utils, Polygon.Shapes
-from regions import Point
+import regions
 
 def removeDuplicatePoints(points):
     # remove the duplicated points if they are next to each other
@@ -53,7 +53,7 @@ class decomposition():
         #print 'Mission Starts'
         self.notchVertices = [] # Indices of notches of polygon (refer to list "allVertices")
         self.orientation = -1 # Direction in which MP5 is running. Single integer: 1 for ccw, -1 for cw
-        self.startVertex = Point(0,0)
+        self.startVertex = regions.Point(0,0)
         
         while self.P.nPoints() > 0:
             
@@ -409,7 +409,7 @@ class decomposition():
                 
     def getVertices(self,poly):
         for pt in Polygon.Utils.pointList(poly):
-            yield Point(pt[0],pt[1])
+            yield regions.Point(pt[0],pt[1])
             
             
     def getFaces(self,poly):
@@ -425,7 +425,7 @@ class decomposition():
         lastPt = None
         for pt in self.getVertices(poly):
 
-            thisPt = Point(pt.x, pt.y)
+            thisPt = regions.Point(pt.x, pt.y)
 
             if lastPt is not None:
                 yield tuple(sorted((lastPt, thisPt)))
