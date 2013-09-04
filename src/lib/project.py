@@ -22,11 +22,11 @@ def get_ltlmop_root():
 
     return os.path.join(p, "src")
 
-import os, sys
-import fileMethods, regions
+import os
+import fileMethods
+import regions
 from numpy import *
 import handlerSubsystem
-import inspect
 import logging
 
 class Project:
