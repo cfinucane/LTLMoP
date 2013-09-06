@@ -56,7 +56,8 @@ class Project:
         # Compilation options (with defaults)
         self.compile_options = {"convexify": True,  # Decompose workspace into convex regions
                                 "fastslow": False,  # Enable "fast-slow" synthesis algorithm
-                                "decompose": True,  # Create regions for free space and region overlaps (required for Locative Preposition support)
+                                "parse_locative_phrases": True,  # Parse locative phrases before passing the spec to the main parser
+                                "resolve_overlapping_regions": True,  # Split overlapping regions into separate parts
                                 "use_region_bit_encoding": True, # Use a vector of "bitX" propositions to represent regions, for efficiency
                                 "parser": "structured"}  # Spec parser: SLURP ("slurp"), structured English ("structured"), or LTL ("ltl")
 
