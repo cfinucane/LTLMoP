@@ -67,6 +67,22 @@ def getInitialRegionFragment(region_names, use_bits=True):
 
     return "({})".format(" | ".join(valid_settings))
 
+def getStayThereFragment(region_names, use_bits=True):
+    # Stay-there macros.  This can be done using just region names, but is much more concise
+    # using bit encodings (and thus much faster to encode as CNF)
+    region_props = getRegionRelatedPropositions(region_names, use_bits)
+    stay_ltl = "({})".format(" & ".join(("(next({0}) <-> {0})".format(p)
+                                         for p in region_props)))
+
+def getRegionRelatedPropositions(region_names, use_bits=True):
+    if use_bits:
+        num_bits = int(math.ceil(math.log(len(region_names), 2)))
+        region_props = ("bit{}".format(n) for n in xrange(0, num_bits))
+    else:
+        region_props = region_names
+
+    return region_props
+
 def _adjacencyListToHash(region_names, adj_list):
     """ Convert a list of adjacencies to an adjacency hash (for efficiency).
         WARNING: Assumes all adjacencies are bidirectional, and that
