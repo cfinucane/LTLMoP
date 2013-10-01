@@ -133,6 +133,17 @@ public class GROneMain {
 		///////////////////////////////////////////////
 		//Check that every initial system state is winning for every initial environment state
 		all_init = g.getSysPlayer().initial().and(g.getEnvPlayer().initial());
+
+
+
+        // Print all initial states for Ben's stuff
+        BDDIterator ini_iterator = all_init.iterator(env.moduleUnprimeVars().union(sys.moduleUnprimeVars()));
+		while (ini_iterator.hasNext()) {
+            BDD this_ini = (BDD) ini_iterator.next();
+            this_ini.printSet();
+        }
+
+
 		counter_exmple = g.envWinningStates().and(all_init);
         BDDVarSet all_vars = sys.moduleUnprimeVars().union(env.moduleUnprimeVars());
 		if (!counter_exmple.isZero()) {
