@@ -135,15 +135,6 @@ public class GROneMain {
 		all_init = g.getSysPlayer().initial().and(g.getEnvPlayer().initial());
 
 
-
-        // Print all initial states for Ben's stuff
-        BDDIterator ini_iterator = all_init.iterator(env.moduleUnprimeVars().union(sys.moduleUnprimeVars()));
-		while (ini_iterator.hasNext()) {
-            BDD this_ini = (BDD) ini_iterator.next();
-            this_ini.printSet();
-        }
-
-
 		counter_exmple = g.envWinningStates().and(all_init);
         BDDVarSet all_vars = sys.moduleUnprimeVars().union(env.moduleUnprimeVars());
 		if (!counter_exmple.isZero()) {
@@ -200,6 +191,15 @@ public class GROneMain {
 		System.out.println("-----------------------------------------");
 		PrintStream orig_out = System.out;
 		System.setOut(new PrintStream(new File(out_filename))); // writing the output to a file
+
+        // Print all initial states for Ben's stuff
+        BDDIterator ini_iterator = all_init.iterator(env.moduleUnprimeVars().union(sys.moduleUnprimeVars()));
+		while (ini_iterator.hasNext()) {
+            BDD this_ini = (BDD) ini_iterator.next();
+            this_ini.printSet();
+        }
+
+
 		boolean falsifyEnv = g.printWinningStrategy(all_init);
 		System.setOut(orig_out); // restore STDOUT
 		System.out.print("-----------------------------------------\n");
