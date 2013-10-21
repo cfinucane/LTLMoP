@@ -9,7 +9,10 @@ NotifyReachedR1, 1
 
 CompileOptions:
 convexify: True
+parser: structured
 fastslow: False
+decompose: True
+use_region_bit_encoding: True
 
 CurrentConfigName:
 SimulatedRobot
