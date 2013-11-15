@@ -59,12 +59,8 @@ def diffAngles(angle1, angle2):
     return (angle1 - angle2 + np.pi)%(2*np.pi) - np.pi
 
 
-pass
-#===============================================================================
-# MAPS AND ROBOT 
-#===============================================================================
-
 class MapRRT:
+    
     def __init__(self, boundary, allObstacles):
         ''' An object with the outline of the map, a list of obstacles,
         and the poses that the robot starts and ends on.
@@ -83,6 +79,7 @@ class MapRRT:
             
             
 class RobotRRT:
+    
     def __init__(self, pose, outline, radius=None):
         """ An object that represents the robot location and outline.
         
@@ -113,17 +110,15 @@ class RobotRRT:
         return RobotRRT(np.array(self.pose), Polygon.Polygon(self.shape))
 
 
-pass
-#===============================================================================
-# PLOTTING
-#===============================================================================
-class PlottingRRT:
+class PlotterRRT:
+    
     def __init__(self, figure, axes):
         """ An object to facilitate plotting common structures on the given 
         matplotlib figure and axes.
         """
         self.fig = figure
         self.ax = axes
+
 
     def drawPolygon(self, poly, color='k', width=1):
         """ Draw the outline of a polygon object
@@ -227,6 +222,7 @@ class PlottingRRT:
     
     
 class DipolarController:
+    
     def __init__(self, k1=.5, k2=1.5, lambdaValue=3):
         """ A class that uses the dipolar controller from the paper: Model 
         Predictive Control for the Navigation of a Nonholonomic Vehicle with 
@@ -319,6 +315,7 @@ class DipolarController:
   
   
 class Node:
+    
     def __init__(self, x=0, y=0, theta=0, XY=None, pose=None, parent=None):
         """ An object to represent poses and connections amongst them. If 
         instantiated, the value of later parameters will override the 
@@ -350,6 +347,7 @@ class Node:
   
 
 class PlannerRRT:
+    
     def __init__(self, fullMap, robot, plotter=None):
         """ An RRT path planner that takes into account orientation 
         requirements.
@@ -358,7 +356,7 @@ class PlannerRRT:
 
         :param fullMap: A MapRRT object
         :param robot: A robotRRT object
-        :param plotter: A PlottingRRT object. If plotting is desired
+        :param plotter: A PlotterRRT object. If plotting is desired
         """
                 
         # TODO: CHECK TO SEE WHICH SHOULD BE KEPT HERE
@@ -720,6 +718,7 @@ class TestRRT:
         self.PLOT_SHORT_PATH = True
         self.PLOT_TREE_FAIL = True      # Plot final tree if it times out
     
+    
     def getSampleMapRRT(self, mapIndex):
         """ Return a (startPose, endPose, map) .Map index defines which of the 
         maps will be returned.
@@ -790,7 +789,11 @@ class TestRRT:
         testMap = MapRRT(boundary, allObstacles)    
         return startPose, endPose, testMap
     
-    def runRRTDipoleControl(self):
+    
+    def runRRTDipoleControlAndShortcut(self):
+        """ Run the dipolar RRT/shortcut and plot according to parameters 
+        specified in this class' init function.
+        """
         if not self.DEBUGER:
             plt.ion()
             
@@ -800,7 +803,7 @@ class TestRRT:
         robot = RobotRRT(np.array([0,.2,np.pi/2]), robotOutline)
         
         figure, axes = plt.subplots()
-        plotter = PlottingRRT(figure, axes)
+        plotter = PlotterRRT(figure, axes)
         plotter.drawMap(testMap)
         axes.grid()
         
@@ -834,12 +837,36 @@ class TestRRT:
         plt.show()
 
 
+    def runRRTDipoleControlAndShortcutNoPlot(self):     
+        """ Use this method to time the implementation and/or profile it
+        """       
+        startPose, endPose, testMap = self.getSampleMapRRT(3)
+        
+        robotOutline = Polygon.Polygon([(-.25,0), (.25,0), (0,.5)])
+        robot = RobotRRT(np.array([0,.2,np.pi/2]), robotOutline)
+        
+        planner = PlannerRRT(testMap, robot)
+        planner.DEBUGER = False
+        planner.PLOT_TREE = False
+        planner.PLOT_TREE_FAIL = False
+        
+        rrtPath = planner.getRRTDipoleControlPath(startPose, endPose)
+        
+        if rrtPath == None:
+            print "Did not find path in given time."
+            return
+            
+        planner.getShortcutPathDipole(rrtPath)
+        
+
 if __name__ == "__main__":
     print "Starting"
     timeS = clock()
     
     test = TestRRT()
-    test.runRRTDipoleControl()    
+    test.runRRTDipoleControlAndShortcut()    
+#     test.runRRTDipoleControlAndShortcutNoPlot()    
+#     cProfile.run("test.runRRTDipoleControlAndShortcutNoPlot()") 
     
     print "Done: " + str(clock()-timeS)
 
